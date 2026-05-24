@@ -352,7 +352,6 @@ export default function GameCard({ game, session, reviewSummary, onReviewSaved, 
                     {[
                       game.min_players && `👥 ${game.min_players}~${game.max_players}인`,
                       game.play_minutes && `⏱ ${game.play_minutes}분`,
-                      game.difficulty && `🎯 난이도 ${game.difficulty}`,
                     ].filter(Boolean).join("  ")}
                   </Text>
                 </View>

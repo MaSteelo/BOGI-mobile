@@ -116,7 +116,7 @@ export default function HomeScreen({ session }) {
       console.log("[HomeScreen] 데이터 로딩 시작");
       try {
         const [gamesRes, reviewsRes] = await Promise.all([
-          supabase.from("games").select("id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, genre, difficulty").eq("status", "approved").order("name_ko"),
+          supabase.from("games").select("id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, genre").eq("status", "approved").order("name_ko"),
           supabase.from("reviews").select("game_id, total_score").not("total_score", "is", null),
         ]);
 
