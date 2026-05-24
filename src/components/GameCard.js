@@ -83,7 +83,7 @@ function StarInput({ value, onChange }) {
   );
 }
 
-export default function GameCard({ game, session, reviewSummary, onReviewSaved, cardWidth }) {
+export default function GameCard({ game, session, reviewSummary, gameStat, onReviewSaved, cardWidth }) {
   const genreStyle = getGenreStyle(game.genre);
   const imageUrl = safeImageUrl(game.image_url);
   const [imgError, setImgError] = useState(false);
@@ -287,12 +287,19 @@ export default function GameCard({ game, session, reviewSummary, onReviewSaved, 
         </View>
         <View style={s.cardInfo}>
           <Text style={s.cardName} numberOfLines={1}>{game.name_ko || game.name_en}</Text>
-          <Text style={s.cardSub} numberOfLines={1}>
-            {[
-              game.min_players ? `👥${game.min_players}~${game.max_players}` : null,
-              game.play_minutes ? `⏱${game.play_minutes}분` : null,
-            ].filter(Boolean).join(" ")}
-          </Text>
+          {gameStat ? (
+            <View style={s.statRow}>
+              <Text style={s.statAvg}>⭐ {gameStat.avg.toFixed(1)}</Text>
+              <Text style={s.statCount}> ({gameStat.count})</Text>
+            </View>
+          ) : (
+            <Text style={s.cardSub} numberOfLines={1}>
+              {[
+                game.min_players ? `👥${game.min_players}~${game.max_players}` : null,
+                game.play_minutes ? `⏱${game.play_minutes}분` : null,
+              ].filter(Boolean).join(" ")}
+            </Text>
+          )}
         </View>
       </TouchableOpacity>
 
@@ -506,6 +513,9 @@ const s = StyleSheet.create({
   cardInfo: { padding: 6 },
   cardName: { fontSize: 10, fontWeight: "700", color: COLORS.text, marginBottom: 2 },
   cardSub: { fontSize: 9, color: COLORS.sub },
+  statRow: { flexDirection: "row", alignItems: "center" },
+  statAvg: { fontSize: 10, fontWeight: "700", color: COLORS.accent },
+  statCount: { fontSize: 9, color: COLORS.subLight },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" },
   modalWrapper: {
     position: "absolute",

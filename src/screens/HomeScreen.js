@@ -81,6 +81,7 @@ export default function HomeScreen({ session }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [reviewSummary, setReviewSummary] = useState({});
+  const [gameStats, setGameStats] = useState({}); // { [game_id]: { avg, count } }
   const [bogiTop, setBogiTop] = useState([]);
   const [bggTop, setBggTop] = useState([]);
 
@@ -164,19 +165,25 @@ export default function HomeScreen({ session }) {
           .slice(0, 10);
         setBggTop(bgg);
 
-        // BOGI TOP 10: 리뷰 평균 별점
+        // 리뷰 집계: gameStats (전체) + BOGI TOP 10
         if (reviewsRes.data?.length > 0) {
           const gamesById = {};
           allGames.forEach((g) => { gamesById[g.id] = g; });
           const agg = {};
           reviewsRes.data.forEach((r) => {
-            if (!gamesById[r.game_id]) return;
             if (!agg[r.game_id]) agg[r.game_id] = { sum: 0, count: 0 };
             agg[r.game_id].sum += r.total_score;
             agg[r.game_id].count += 1;
           });
+          // 전체 게임 커뮤니티 평점 맵
+          const stats = {};
+          Object.entries(agg).forEach(([id, { sum, count }]) => {
+            stats[id] = { avg: sum / count, count };
+          });
+          setGameStats(stats);
+          // BOGI TOP: approved 게임만
           const top = Object.entries(agg)
-            .filter(([, v]) => v.count >= 1)
+            .filter(([id]) => gamesById[id])
             .map(([id, { sum, count }]) => ({ game: gamesById[id], avg: sum / count, count }))
             .sort((a, b) => b.avg - a.avg || b.count - a.count)
             .slice(0, 10);
@@ -341,6 +348,7 @@ export default function HomeScreen({ session }) {
               game={item}
               session={session}
               reviewSummary={reviewSummary[item.id] || null}
+              gameStat={gameStats[item.id] || null}
               onReviewSaved={refreshReviewSummary}
               cardWidth={CARD_W}
             />
