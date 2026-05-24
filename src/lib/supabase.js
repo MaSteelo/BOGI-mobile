@@ -4,6 +4,9 @@ import * as SecureStore from "expo-secure-store";
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
+console.log("[Supabase] URL:", SUPABASE_URL ?? "❌ undefined");
+console.log("[Supabase] KEY:", SUPABASE_ANON_KEY ? "✓ 있음" : "❌ undefined");
+
 // expo-secure-store를 Supabase 세션 스토리지로 사용 (localStorage 대체)
 const ExpoSecureStoreAdapter = {
   getItem: async (key) => {

@@ -79,6 +79,7 @@ export default function HomeScreen({ session }) {
 
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [reviewSummary, setReviewSummary] = useState({});
   const [bogiTop, setBogiTop] = useState([]);
   const [bggTop, setBggTop] = useState([]);
@@ -112,10 +113,44 @@ export default function HomeScreen({ session }) {
 
   useEffect(() => {
     (async () => {
-      const [gamesRes, reviewsRes] = await Promise.all([
-        supabase.from("games").select("id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, genre, difficulty").eq("status", "approved").order("name_ko"),
-        supabase.from("reviews").select("game_id, total_score").not("total_score", "is", null),
-      ]);
+      console.log("[HomeScreen] 데이터 로딩 시작");
+      try {
+        const [gamesRes, reviewsRes] = await Promise.all([
+          supabase.from("games").select("id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, genre, difficulty").eq("status", "approved").order("name_ko"),
+          supabase.from("reviews").select("game_id, total_score").not("total_score", "is", null),
+        ]);
+
+        console.log("[HomeScreen] games 응답:", {
+          count: gamesRes.data?.length ?? 0,
+          error: gamesRes.error?.message ?? null,
+          status: gamesRes.status,
+        });
+        console.log("[HomeScreen] reviews 응답:", {
+          count: reviewsRes.data?.length ?? 0,
+          error: reviewsRes.error?.message ?? null,
+        });
+
+        if (gamesRes.error) {
+          setLoadError(`games 조회 오류: ${gamesRes.error.message} (code: ${gamesRes.error.code})`);
+          setLoading(false);
+          return;
+        }
+
+        // status='approved' 필터가 없는 경우도 시도 (RLS 확인용)
+        if (!gamesRes.data || gamesRes.data.length === 0) {
+          console.warn("[HomeScreen] games 결과 0개 — status 필터 없이 재시도");
+          const fallback = await supabase.from("games").select("id, name_ko").limit(3);
+          console.log("[HomeScreen] 필터 없는 재시도:", fallback.data?.length, "개, 에러:", fallback.error?.message);
+          if (fallback.error) {
+            setLoadError(`RLS 차단 가능성: ${fallback.error.message}`);
+          } else if (!fallback.data?.length) {
+            setLoadError("games 테이블이 비어 있거나 RLS가 비로그인 조회를 차단하고 있습니다.");
+          } else {
+            setLoadError(`status='approved'인 게임이 없습니다. 전체 ${fallback.data.length}개 확인됨 (limit 3).`);
+          }
+          setLoading(false);
+          return;
+        }
 
       if (gamesRes.data) {
         const allGames = gamesRes.data;
@@ -149,7 +184,12 @@ export default function HomeScreen({ session }) {
         }
       }
 
-      setLoading(false);
+        setLoading(false);
+      } catch (e) {
+        console.error("[HomeScreen] 예외 발생:", e);
+        setLoadError(`예외: ${e.message}`);
+        setLoading(false);
+      }
     })();
   }, []);
 
@@ -256,6 +296,16 @@ export default function HomeScreen({ session }) {
       <View style={[s.center, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color={COLORS.accent} />
         <Text style={{ marginTop: 12, color: COLORS.sub, fontSize: 14 }}>게임 불러오는 중...</Text>
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={[s.center, { paddingTop: insets.top, paddingHorizontal: 24 }]}>
+        <Text style={{ fontSize: 32, marginBottom: 12 }}>⚠️</Text>
+        <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.error, marginBottom: 8 }}>데이터 로딩 실패</Text>
+        <Text style={{ fontSize: 12, color: COLORS.sub, textAlign: "center", lineHeight: 20 }}>{loadError}</Text>
       </View>
     );
   }
