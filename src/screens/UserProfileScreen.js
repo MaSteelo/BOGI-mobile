@@ -1,49 +1,401 @@
-import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  FlatList,
+  StyleSheet,
+  ActivityIndicator,
+  Dimensions,
+} from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../constants/colors";
+import { supabase } from "../lib/supabase";
+import GameCard from "../components/GameCard";
 
-export default function UserProfileScreen({ route, session, profile }) {
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const PADDING = 16;
+const GAP = 8;
+const CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP * 2) / 3;
+
+const REVIEWS_QUERY =
+  "*, games(id, name_ko, name_en, genre, min_players, max_players, play_minutes, bgg_rank, image_url)";
+
+function Avatar({ nickname, size = 72 }) {
+  const letter = nickname?.charAt(0)?.toUpperCase() || "?";
+  return (
+    <View
+      style={[
+        styles.avatar,
+        { width: size, height: size, borderRadius: size / 2 },
+      ]}
+    >
+      <Text style={[styles.avatarLetter, { fontSize: size * 0.42 }]}>
+        {letter}
+      </Text>
+    </View>
+  );
+}
+
+export default function UserProfileScreen({ route, session }) {
   const navigation = useNavigation();
   const { userId } = route?.params ?? {};
   console.log("[UserProfileScreen] userId:", userId);
+
+  const insets = useSafeAreaInsets();
+  const [profile, setProfile] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("records");
+
+  useEffect(() => {
+    if (!userId) return;
+    Promise.all([
+      supabase.from("profiles").select("*").eq("id", userId).single(),
+      supabase
+        .from("reviews")
+        .select(REVIEWS_QUERY)
+        .eq("user_id", userId)
+        .not("total_score", "is", null)
+        .order("created_at", { ascending: false }),
+    ]).then(([profileRes, reviewsRes]) => {
+      console.log("[UserProfileScreen] 프로필:", profileRes.data?.nickname);
+      console.log("[UserProfileScreen] 리뷰:", reviewsRes.data?.length);
+      setProfile(profileRes.data);
+      setReviews(reviewsRes.data ?? []);
+      setLoading(false);
+    });
+  }, [userId]);
+
+  const stats = useMemo(() => {
+    if (reviews.length === 0) return { count: 0, avg: "-", favoriteGenre: "-" };
+    const avg = reviews.reduce((s, r) => s + (r.total_score || 0), 0) / reviews.length;
+    const genreCount = {};
+    for (const r of reviews) {
+      for (const g of r.games?.genre ?? []) {
+        genreCount[g] = (genreCount[g] || 0) + 1;
+      }
+    }
+    const favoriteGenre =
+      Object.entries(genreCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "-";
+    return { count: reviews.length, avg: avg.toFixed(1), favoriteGenre };
+  }, [reviews]);
+
+  const reviewedGames = useMemo(() => {
+    const seen = new Set();
+    return reviews
+      .filter((r) => r.games && !seen.has(r.game_id) && seen.add(r.game_id))
+      .map((r) => r.games);
+  }, [reviews]);
+
+  const genreDistribution = useMemo(() => {
+    const genreCount = {};
+    for (const r of reviews) {
+      for (const g of r.games?.genre ?? []) {
+        genreCount[g] = (genreCount[g] || 0) + 1;
+      }
+    }
+    return Object.entries(genreCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+  }, [reviews]);
+
+  const ratingCounts = useMemo(() => {
+    return [1, 2, 3, 4, 5].map((s) => ({
+      score: s,
+      count: reviews.filter((r) => Math.round(r.total_score) === s).length,
+    }));
+  }, [reviews]);
+
+  const renderGame = useCallback(
+    ({ item }) => (
+      // GameCard handles edit/delete security internally (only shows for session user)
+      <GameCard
+        game={item}
+        session={session}
+        cardWidth={CARD_WIDTH}
+      />
+    ),
+    [session]
+  );
+
+  const nickname = profile?.nickname || "사용자";
+
+  const ListHeader = (
+    <View>
+      {/* Profile */}
+      <View style={styles.profileSection}>
+        <Avatar nickname={nickname} />
+        <View style={styles.profileInfo}>
+          <Text style={styles.nickname}>{nickname}</Text>
+          {profile?.created_at && (
+            <Text style={styles.joinDate}>
+              {profile.created_at.slice(0, 10)} 가입
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {/* Stats */}
+      <View style={styles.statsRow}>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{stats.count}</Text>
+          <Text style={styles.statLabel}>기록</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>
+            {stats.count > 0 ? stats.avg : "-"}
+          </Text>
+          <Text style={styles.statLabel}>평균 별점</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statCard}>
+          <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
+            {stats.favoriteGenre}
+          </Text>
+          <Text style={styles.statLabel}>최애 장르</Text>
+        </View>
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabRow}>
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === "records" && styles.tabBtnActive]}
+          onPress={() => setActiveTab("records")}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "records" && styles.tabTextActive,
+            ]}
+          >
+            기록
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.tabBtn,
+            activeTab === "analytics" && styles.tabBtnActive,
+          ]}
+          onPress={() => setActiveTab("analytics")}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "analytics" && styles.tabTextActive,
+            ]}
+          >
+            취향분석
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading && (
+        <View style={styles.center}>
+          <ActivityIndicator color={COLORS.accent} />
+        </View>
+      )}
+
+      {activeTab === "analytics" && !loading && (
+        <View style={{ paddingHorizontal: PADDING, paddingBottom: 20, gap: 12 }}>
+          {/* Rating chart */}
+          <View style={styles.chartCard}>
+            <Text style={styles.chartTitle}>별점 분포</Text>
+            {[...ratingCounts].reverse().map(({ score, count }) => {
+              const max = Math.max(...ratingCounts.map((c) => c.count), 1);
+              return (
+                <View key={score} style={styles.barRow}>
+                  <Text style={styles.barLabel}>{"★".repeat(score)}</Text>
+                  <View style={styles.barTrack}>
+                    <View
+                      style={[
+                        styles.barFill,
+                        { width: `${(count / max) * 100}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.barCount}>{count}</Text>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Genre chips */}
+          {genreDistribution.length > 0 && (
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>좋아하는 장르</Text>
+              <View style={styles.genreWrap}>
+                {genreDistribution.map(([g, c]) => (
+                  <View key={g} style={styles.genreChip}>
+                    <Text style={styles.genreChipText}>
+                      {g} {c}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {reviews.length === 0 && (
+            <Text style={styles.emptyText}>아직 기록이 없어요</Text>
+          )}
+        </View>
+      )}
+    </View>
+  );
+
   return (
-    <View style={styles.container}>
-      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-        <Text style={styles.backText}>← 뒤로</Text>
-      </TouchableOpacity>
-      <Text style={styles.text}>👤 유저 프로필</Text>
-      <Text style={styles.sub}>userId: {userId}</Text>
-      <Text style={styles.sub}>포팅 예정</Text>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header with back button */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+          hitSlop={8}
+        >
+          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{nickname}님의 프로필</Text>
+        <View style={{ width: 32 }} />
+      </View>
+
+      <FlatList
+        data={activeTab === "records" ? reviewedGames : []}
+        keyExtractor={(item) => item.id}
+        renderItem={renderGame}
+        numColumns={3}
+        ListHeaderComponent={ListHeader}
+        contentContainerStyle={styles.listContent}
+        columnWrapperStyle={
+          activeTab === "records" && reviewedGames.length > 0
+            ? styles.columnWrapper
+            : undefined
+        }
+        ListEmptyComponent={
+          !loading && activeTab === "records" ? (
+            <View style={styles.center}>
+              <Text style={styles.emptyText}>기록한 게임이 없어요</Text>
+            </View>
+          ) : null
+        }
+        showsVerticalScrollIndicator={false}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  header: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-  backBtn: {
-    position: "absolute",
-    top: 60,
-    left: 20,
-  },
-  backText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.sub,
-  },
-  text: {
-    fontSize: 24,
+  backBtn: { padding: 4 },
+  headerTitle: {
+    flex: 1,
+    fontSize: 16,
     fontWeight: "800",
     color: COLORS.text,
+    textAlign: "center",
   },
-  sub: {
-    fontSize: 13,
-    color: COLORS.subLight,
+  profileSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    padding: 16,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
+  avatar: {
+    backgroundColor: COLORS.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarLetter: { color: "#fff", fontWeight: "800" },
+  profileInfo: { gap: 4 },
+  nickname: { fontSize: 20, fontWeight: "800", color: COLORS.text },
+  joinDate: { fontSize: 12, color: COLORS.subLight },
+  statsRow: {
+    flexDirection: "row",
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingVertical: 14,
+  },
+  statCard: { flex: 1, alignItems: "center", gap: 4, paddingHorizontal: 8 },
+  statValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.accent,
+    textAlign: "center",
+  },
+  statLabel: { fontSize: 11, color: COLORS.sub },
+  statDivider: { width: 1, backgroundColor: COLORS.border },
+  tabRow: {
+    flexDirection: "row",
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    marginBottom: 12,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  tabBtnActive: { borderBottomColor: COLORS.accent },
+  tabText: { fontSize: 14, fontWeight: "700", color: COLORS.subLight },
+  tabTextActive: { color: COLORS.accent },
+  listContent: { paddingHorizontal: 16, paddingBottom: 32 },
+  columnWrapper: { gap: GAP, marginBottom: GAP },
+  center: { alignItems: "center", paddingVertical: 32 },
+  emptyText: { fontSize: 14, color: COLORS.sub, textAlign: "center" },
+  chartCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  chartTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginBottom: 12,
+  },
+  barRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+  },
+  barLabel: { fontSize: 11, color: COLORS.accent, width: 60 },
+  barTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  barFill: { height: "100%", backgroundColor: COLORS.accent, borderRadius: 4 },
+  barCount: { fontSize: 11, color: COLORS.sub, width: 20, textAlign: "right" },
+  genreWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  genreChip: {
+    backgroundColor: COLORS.accentLight,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  genreChipText: { fontSize: 12, fontWeight: "700", color: COLORS.accent },
 });

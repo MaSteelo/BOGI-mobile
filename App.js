@@ -2,12 +2,16 @@ import "react-native-gesture-handler";
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
+import { createStackNavigator } from "@react-navigation/stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { supabase } from "./src/lib/supabase";
 import { COLORS } from "./src/constants/colors";
 import AuthScreen from "./src/screens/AuthScreen";
 import TabNavigator from "./src/navigation/TabNavigator";
+import UserProfileScreen from "./src/screens/UserProfileScreen";
+
+const Stack = createStackNavigator();
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -62,7 +66,14 @@ export default function App() {
       <NavigationContainer>
         <StatusBar style="dark" />
         {session ? (
-          <TabNavigator session={session} profile={profile} />
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="Main">
+              {() => <TabNavigator session={session} profile={profile} />}
+            </Stack.Screen>
+            <Stack.Screen name="UserProfile">
+              {(props) => <UserProfileScreen {...props} session={session} />}
+            </Stack.Screen>
+          </Stack.Navigator>
         ) : (
           <AuthScreen />
         )}
