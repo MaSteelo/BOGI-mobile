@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    height: 68,
+    height: 58,
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },

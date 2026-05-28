@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import {
   View, Text, Image, TouchableOpacity, Modal,
   Animated, ScrollView, TextInput, StyleSheet,
-  ActivityIndicator, Alert, Dimensions,
+  ActivityIndicator, Alert, Dimensions, Easing,
 } from "react-native";
 import { supabase } from "../lib/supabase";
 import { COLORS } from "../constants/colors";
@@ -109,6 +109,12 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
   const [proposalSaved, setProposalSaved] = useState(false);
   const [proposalSaving, setProposalSaving] = useState(false);
 
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editField, setEditField] = useState(null);
+  const [editValue, setEditValue] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editSaved, setEditSaved] = useState(false);
+
   const frontRotateY = flipAnim.interpolate({
     inputRange: [0, 180],
     outputRange: ["0deg", "180deg"],
@@ -185,7 +191,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
     requestAnimationFrame(() => {
       Animated.parallel([
         Animated.timing(overlayAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-        Animated.timing(flipAnim, { toValue: 180, duration: 700, useNativeDriver: true }),
+        Animated.timing(flipAnim, { toValue: 180, duration: 600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ]).start();
     });
   };
@@ -193,7 +199,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
   const closeCard = () => {
     Animated.parallel([
       Animated.timing(overlayAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
-      Animated.timing(flipAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+      Animated.timing(flipAnim, { toValue: 0, duration: 500, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
     ]).start(() => {
       setExpanded(false);
       setMyReviews(null);
@@ -208,6 +214,11 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       setProposalPreviewValid(null);
       setProposalSaved(false);
       setProposalSaving(false);
+      setShowEditForm(false);
+      setEditField(null);
+      setEditValue("");
+      setEditSaving(false);
+      setEditSaved(false);
     });
   };
 
@@ -233,6 +244,33 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
     } else {
       setProposalSaved(true);
     }
+  };
+
+  const EDITABLE_FIELDS = [
+    { key: "name_ko", label: "한글 이름", current: game.name_ko || "" },
+    { key: "name_en", label: "영문 이름", current: game.name_en || "" },
+    { key: "min_players", label: "최소 인원", current: String(game.min_players ?? "") },
+    { key: "max_players", label: "최대 인원", current: String(game.max_players ?? "") },
+    { key: "play_minutes", label: "플레이 시간(분)", current: String(game.play_minutes ?? "") },
+  ];
+
+  const submitEditProposal = async () => {
+    if (!editField || !editValue.trim()) {
+      Alert.alert("알림", "필드와 값을 입력해주세요");
+      return;
+    }
+    const field = EDITABLE_FIELDS.find((f) => f.key === editField);
+    setEditSaving(true);
+    const { error } = await supabase.from("game_edits").insert({
+      game_id: game.id,
+      user_id: session.user.id,
+      field_name: editField,
+      old_value: field?.current || null,
+      new_value: editValue.trim(),
+    });
+    setEditSaving(false);
+    if (error) Alert.alert("오류", error.message);
+    else setEditSaved(true);
   };
 
   const handleSave = async () => {
@@ -346,7 +384,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
         <View style={s.modalWrapper} pointerEvents="box-none">
           {/* 앞면 */}
           <Animated.View style={[s.face, {
-            transform: [{ perspective: 1200 }, { rotateY: frontRotateY }],
+            transform: [{ perspective: 1000 }, { rotateY: frontRotateY }],
             opacity: frontOpacity,
             backgroundColor: genreStyle.grad[0],
           }]}>
@@ -359,7 +397,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
 
           {/* 뒷면 */}
           <Animated.View style={[s.face, {
-            transform: [{ perspective: 1200 }, { rotateY: backRotateY }],
+            transform: [{ perspective: 1000 }, { rotateY: backRotateY }],
             opacity: backOpacity,
             backgroundColor: COLORS.surface,
           }]}>
@@ -399,11 +437,16 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                 </View>
               </View>
 
-              {/* 이미지 제안 버튼 */}
-              {session && !showProposalForm && (
-                <TouchableOpacity style={s.imgProposalBtn} onPress={() => setShowProposalForm(true)}>
-                  <Text style={s.imgProposalBtnText}>📷 이미지 제안</Text>
-                </TouchableOpacity>
+              {/* 제안 버튼 (두 폼 모두 닫혀있을 때) */}
+              {session && !showProposalForm && !showEditForm && (
+                <View style={s.proposalBtnRow}>
+                  <TouchableOpacity style={[s.imgProposalBtn, { flex: 1 }]} onPress={() => setShowProposalForm(true)}>
+                    <Text style={s.imgProposalBtnText}>📷 이미지 제안</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.imgProposalBtn, { flex: 1 }]} onPress={() => setShowEditForm(true)}>
+                    <Text style={s.imgProposalBtnText}>📝 정보 수정 제안</Text>
+                  </TouchableOpacity>
+                </View>
               )}
 
               {/* 이미지 제안 폼 */}
@@ -461,6 +504,53 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                           <Text style={s.saveBtnText}>제안하기</Text>
                         )}
                       </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              )}
+
+              {/* 정보 수정 제안 폼 */}
+              {session && showEditForm && (
+                <View style={s.proposalSection}>
+                  <View style={s.sectionHeaderRow}>
+                    <Text style={s.sectionTitle}>📝 정보 수정 제안</Text>
+                    <TouchableOpacity onPress={() => { setShowEditForm(false); setEditSaved(false); setEditField(null); setEditValue(""); }}>
+                      <Text style={{ fontSize: 12, color: COLORS.sub }}>✕ 닫기</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {editSaved ? (
+                    <Text style={s.proposalSuccess}>✅ 수정 제안이 등록되었습니다. 관리자 검토 후 반영됩니다.</Text>
+                  ) : (
+                    <>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                        {EDITABLE_FIELDS.map((f) => (
+                          <TouchableOpacity
+                            key={f.key}
+                            onPress={() => { setEditField(f.key); setEditValue(f.current); }}
+                            style={[s.fieldChip, editField === f.key && s.fieldChipActive]}
+                          >
+                            <Text style={[s.fieldChipText, editField === f.key && s.fieldChipTextActive]}>{f.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      {editField && (
+                        <>
+                          <TextInput
+                            value={editValue}
+                            onChangeText={setEditValue}
+                            placeholder="새로운 값을 입력하세요"
+                            placeholderTextColor={COLORS.subLight}
+                            style={s.proposalInput}
+                          />
+                          <TouchableOpacity
+                            onPress={submitEditProposal}
+                            disabled={editSaving || !editValue.trim()}
+                            style={[s.saveBtn, (editSaving || !editValue.trim()) && { opacity: 0.5 }]}
+                          >
+                            {editSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={s.saveBtnText}>제안하기</Text>}
+                          </TouchableOpacity>
+                        </>
+                      )}
                     </>
                   )}
                 </View>
@@ -726,13 +816,12 @@ const s = StyleSheet.create({
   reviewMemo: { fontSize: 13, color: "#404040", lineHeight: 20, marginTop: 4 },
   emptyText: { fontSize: 13, color: COLORS.subLight, textAlign: "center", padding: 16 },
   imgProposalBtn: {
-    alignSelf: "flex-end",
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 7,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
-    marginBottom: 10,
+    alignItems: "center",
   },
   imgProposalBtnText: { fontSize: 11, color: COLORS.sub, fontWeight: "600" },
   proposalSection: {
@@ -764,4 +853,23 @@ const s = StyleSheet.create({
     textAlign: "center",
     paddingVertical: 8,
   },
+  proposalBtnRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 10,
+  },
+  fieldChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+  },
+  fieldChipActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentLight,
+  },
+  fieldChipText: { fontSize: 11, fontWeight: "600", color: COLORS.sub },
+  fieldChipTextActive: { color: COLORS.accent },
 });

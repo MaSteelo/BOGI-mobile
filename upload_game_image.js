@@ -49,7 +49,7 @@ function fetchUrl(url, headers = {}) {
 }
 
 async function fromBgg(bggId) {
-  const url = `https://boardgamegeek.com/xmlapi2/thing?id=${bggId}&type=boardgame`;
+  const url = `https://boardgamegeek.com/xmlapi2/thing?id=${bggId}&type=boardgame,boardgameexpansion`;
   for (let i = 0; i < 3; i++) {
     const res = await fetchUrl(url, { Authorization: BGG_AUTH });
     if (res.statusCode === 202) {

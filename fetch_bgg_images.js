@@ -62,7 +62,7 @@ async function searchBggId(name) {
 
 // BGG game ID로 <image> URL 가져오기
 async function fetchBggImageUrl(bggId) {
-  const url = `https://boardgamegeek.com/xmlapi2/thing?id=${bggId}&type=boardgame`;
+  const url = `https://boardgamegeek.com/xmlapi2/thing?id=${bggId}&type=boardgame,boardgameexpansion`;
 
   // BGG API는 처음 요청 시 202를 반환할 수 있음 — 최대 3회 재시도
   for (let attempt = 0; attempt < 3; attempt++) {
