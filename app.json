@@ -1,22 +1,27 @@
 {
   "expo": {
-    "name": "boardgame-app-mobile",
-    "slug": "boardgame-app-mobile",
+    "name": "BOGI",
+    "slug": "bogi",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "backgroundColor": "#1e643c",
+      "resizeMode": "contain"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bogi.app"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1e643c"
+      },
+      "package": "com.bogi.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
