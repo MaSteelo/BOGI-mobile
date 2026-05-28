@@ -10,6 +10,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "../constants/colors";
@@ -24,6 +25,7 @@ const STATUS_TABS = [
 const MAIN_TABS = [
   { key: "edits", label: "게임 편집" },
   { key: "submissions", label: "새 게임 등록" },
+  { key: "images", label: "이미지 제안" },
 ];
 
 function RejectModal({ visible, onClose, onSubmit }) {
@@ -177,6 +179,71 @@ function SubmissionItem({ item, statusTab, onApprove, onReject }) {
   );
 }
 
+function ImageProposalItem({ item, statusTab, onApprove, onReject }) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.gameName}>{item.games?.name_ko ?? "알 수 없는 게임"}</Text>
+        <Text style={styles.dateText}>{item.created_at?.slice(0, 10)}</Text>
+      </View>
+      <Text style={styles.submitterText}>제안자: {item.proposerNickname ?? "알 수 없음"}</Text>
+
+      {/* 이미지 비교 */}
+      <View style={styles.imgCompareRow}>
+        <View style={styles.imgCompareCol}>
+          <Text style={styles.imgCompareLabel}>현재 이미지</Text>
+          {item.games?.image_url ? (
+            <Image
+              source={{ uri: item.games.image_url }}
+              style={styles.imgCompareThumbnail}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.imgCompareThumbnail, styles.imgComparePlaceholder]}>
+              <Text style={{ fontSize: 11, color: COLORS.subLight }}>없음</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.imgCompareArrow}>
+          <Text style={{ color: COLORS.accent, fontSize: 20 }}>→</Text>
+        </View>
+        <View style={styles.imgCompareCol}>
+          <Text style={[styles.imgCompareLabel, { color: COLORS.accent }]}>제안 이미지</Text>
+          <Image
+            source={{ uri: item.image_url }}
+            style={styles.imgCompareThumbnail}
+            resizeMode="cover"
+          />
+        </View>
+      </View>
+
+      {statusTab === "pending" && (
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: COLORS.good }]}
+            onPress={() => onApprove(item)}
+          >
+            <Text style={styles.actionText}>✓ 승인</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: COLORS.error }]}
+            onPress={() => onReject(item)}
+          >
+            <Text style={styles.actionText}>✗ 거절</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {item.status !== "pending" && (
+        <View style={[styles.statusBadge, item.status === "approved" ? styles.badgeGood : styles.badgeError]}>
+          <Text style={styles.statusBadgeText}>
+            {item.status === "approved" ? "✓ 승인됨" : "✗ 거절됨"}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function AdminScreen({ session, profile }) {
   console.log("[AdminScreen] is_admin:", profile?.is_admin);
 
@@ -185,6 +252,7 @@ export default function AdminScreen({ session, profile }) {
   const [statusTab, setStatusTab] = useState("pending");
   const [edits, setEdits] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [imageProposals, setImageProposals] = useState([]);
   const [loading, setLoading] = useState(false);
   const [rejectTarget, setRejectTarget] = useState(null);
 
@@ -202,17 +270,35 @@ export default function AdminScreen({ session, profile }) {
         .eq("status", statusTab)
         .order("created_at", { ascending: false });
       if (error) console.warn("[AdminScreen] edits 오류:", error.message);
-      console.log("[AdminScreen] edits:", data?.length);
       setEdits(data ?? []);
-    } else {
+    } else if (mainTab === "submissions") {
       const { data, error } = await supabase
         .from("game_submissions")
         .select("*, profiles(nickname)")
         .eq("status", statusTab)
         .order("created_at", { ascending: false });
       if (error) console.warn("[AdminScreen] submissions 오류:", error.message);
-      console.log("[AdminScreen] submissions:", data?.length);
       setSubmissions(data ?? []);
+    } else if (mainTab === "images") {
+      const { data, error } = await supabase
+        .from("image_proposals")
+        .select("*, games(id, name_ko, name_en, image_url)")
+        .eq("status", statusTab)
+        .order("created_at", { ascending: false });
+      if (error) console.warn("[AdminScreen] image_proposals 오류:", error.message);
+      const rows = data ?? [];
+      if (rows.length > 0) {
+        const userIds = [...new Set(rows.map((r) => r.user_id))];
+        const { data: profilesData } = await supabase
+          .from("profiles")
+          .select("id, nickname")
+          .in("id", userIds);
+        const nickMap = {};
+        profilesData?.forEach((p) => { nickMap[p.id] = p.nickname; });
+        setImageProposals(rows.map((r) => ({ ...r, proposerNickname: nickMap[r.user_id] || "알 수 없음" })));
+      } else {
+        setImageProposals([]);
+      }
     }
     setLoading(false);
   };
@@ -347,6 +433,56 @@ export default function AdminScreen({ session, profile }) {
     }
   };
 
+  const approveImageProposal = async (item) => {
+    const now = new Date().toISOString();
+    const results = await Promise.all([
+      supabase.from("games").update({ image_url: item.image_url }).eq("id", item.game_id),
+      supabase.from("image_proposals").update({
+        status: "approved",
+        reviewed_at: now,
+        reviewed_by: session.user.id,
+      }).eq("id", item.id),
+      supabase.from("notifications").insert({
+        user_id: item.user_id,
+        type: "image_approved",
+        title: "이미지 제안 승인됨",
+        body: `"${item.games?.name_ko}" 이미지 제안이 승인되었어요!`,
+        related_id: item.id,
+      }),
+    ]);
+    const failed = results.find((r) => r.error);
+    if (failed) {
+      Alert.alert("오류", failed.error.message);
+    } else {
+      Alert.alert("완료", "이미지가 업데이트되었어요.");
+      loadData();
+    }
+  };
+
+  const rejectImageProposal = async (item) => {
+    const now = new Date().toISOString();
+    const [proposalRes] = await Promise.all([
+      supabase.from("image_proposals").update({
+        status: "rejected",
+        reviewed_at: now,
+        reviewed_by: session.user.id,
+      }).eq("id", item.id),
+      supabase.from("notifications").insert({
+        user_id: item.user_id,
+        type: "image_rejected",
+        title: "이미지 제안 반영 불가",
+        body: `"${item.games?.name_ko}" 이미지 제안이 반영되지 않았어요.`,
+        related_id: item.id,
+      }),
+    ]);
+    if (proposalRes.error) {
+      Alert.alert("오류", proposalRes.error.message);
+    } else {
+      setRejectTarget(null);
+      loadData();
+    }
+  };
+
   if (!profile?.is_admin) {
     return (
       <View style={[styles.center, { paddingTop: insets.top }]}>
@@ -356,7 +492,10 @@ export default function AdminScreen({ session, profile }) {
     );
   }
 
-  const items = mainTab === "edits" ? edits : submissions;
+  const items =
+    mainTab === "edits" ? edits :
+    mainTab === "submissions" ? submissions :
+    imageProposals;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -425,12 +564,19 @@ export default function AdminScreen({ session, profile }) {
                 onApprove={approveEdit}
                 onReject={(i) => setRejectTarget({ type: "edit", item: i })}
               />
-            ) : (
+            ) : mainTab === "submissions" ? (
               <SubmissionItem
                 item={item}
                 statusTab={statusTab}
                 onApprove={approveSubmission}
                 onReject={(i) => setRejectTarget({ type: "submission", item: i })}
+              />
+            ) : (
+              <ImageProposalItem
+                item={item}
+                statusTab={statusTab}
+                onApprove={approveImageProposal}
+                onReject={(i) => setRejectTarget({ type: "image", item: i })}
               />
             )
           }
@@ -450,8 +596,10 @@ export default function AdminScreen({ session, profile }) {
           if (!rejectTarget) return;
           if (rejectTarget.type === "edit") {
             rejectEdit(rejectTarget.item, reason);
-          } else {
+          } else if (rejectTarget.type === "submission") {
             rejectSubmission(rejectTarget.item, reason);
+          } else if (rejectTarget.type === "image") {
+            rejectImageProposal(rejectTarget.item);
           }
         }}
       />
@@ -565,6 +713,19 @@ const styles = StyleSheet.create({
   noPermText: { fontSize: 20, fontWeight: "800", color: COLORS.text },
   noPermSub: { fontSize: 13, color: COLORS.subLight, marginTop: 8 },
   emptyText: { fontSize: 14, color: COLORS.sub },
+  imgCompareRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#f8f8f8",
+    borderRadius: 8,
+    padding: 10,
+  },
+  imgCompareCol: { flex: 1, alignItems: "center", gap: 6 },
+  imgCompareArrow: { width: 24, alignItems: "center" },
+  imgCompareLabel: { fontSize: 10, fontWeight: "700", color: COLORS.sub },
+  imgCompareThumbnail: { width: "100%", aspectRatio: 1, borderRadius: 8, backgroundColor: "#e5e7eb" },
+  imgComparePlaceholder: { alignItems: "center", justifyContent: "center" },
 });
 
 const rm = StyleSheet.create({

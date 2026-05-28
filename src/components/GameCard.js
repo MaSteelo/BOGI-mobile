@@ -103,6 +103,12 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
 
+  const [showProposalForm, setShowProposalForm] = useState(false);
+  const [proposalUrl, setProposalUrl] = useState("");
+  const [proposalPreviewValid, setProposalPreviewValid] = useState(null);
+  const [proposalSaved, setProposalSaved] = useState(false);
+  const [proposalSaving, setProposalSaving] = useState(false);
+
   const frontRotateY = flipAnim.interpolate({
     inputRange: [0, 180],
     outputRange: ["0deg", "180deg"],
@@ -197,7 +203,36 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       setMemo("");
       setEditingId(null);
       setShowForm(false);
+      setShowProposalForm(false);
+      setProposalUrl("");
+      setProposalPreviewValid(null);
+      setProposalSaved(false);
+      setProposalSaving(false);
     });
+  };
+
+  const submitProposal = async () => {
+    const url = proposalUrl.trim();
+    if (!url.startsWith("https://")) {
+      Alert.alert("알림", "https://로 시작하는 이미지 URL을 입력해주세요");
+      return;
+    }
+    if (!proposalPreviewValid) {
+      Alert.alert("알림", "유효한 이미지 URL이 아니에요. 이미지가 로드될 때까지 기다려주세요.");
+      return;
+    }
+    setProposalSaving(true);
+    const { error } = await supabase.from("image_proposals").insert({
+      game_id: game.id,
+      user_id: session.user.id,
+      image_url: url,
+    });
+    setProposalSaving(false);
+    if (error) {
+      Alert.alert("오류", error.message);
+    } else {
+      setProposalSaved(true);
+    }
   };
 
   const handleSave = async () => {
@@ -363,6 +398,73 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                   </Text>
                 </View>
               </View>
+
+              {/* 이미지 제안 버튼 */}
+              {session && !showProposalForm && (
+                <TouchableOpacity style={s.imgProposalBtn} onPress={() => setShowProposalForm(true)}>
+                  <Text style={s.imgProposalBtnText}>📷 이미지 제안</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* 이미지 제안 폼 */}
+              {session && showProposalForm && (
+                <View style={s.proposalSection}>
+                  <View style={s.sectionHeaderRow}>
+                    <Text style={s.sectionTitle}>📷 이미지 제안</Text>
+                    <TouchableOpacity onPress={() => { setShowProposalForm(false); setProposalSaved(false); setProposalUrl(""); setProposalPreviewValid(null); }}>
+                      <Text style={{ fontSize: 12, color: COLORS.sub }}>✕ 닫기</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {proposalSaved ? (
+                    <Text style={s.proposalSuccess}>
+                      ✅ 이미지 제안이 등록되었습니다. 관리자 검토 후 반영됩니다.
+                    </Text>
+                  ) : (
+                    <>
+                      <TextInput
+                        value={proposalUrl}
+                        onChangeText={(t) => { setProposalUrl(t); setProposalPreviewValid(null); }}
+                        placeholder="https://로 시작하는 이미지 URL"
+                        placeholderTextColor={COLORS.subLight}
+                        style={s.proposalInput}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        keyboardType="url"
+                      />
+                      {proposalUrl.startsWith("https://") && (
+                        <View style={s.previewContainer}>
+                          <Text style={s.previewLabel}>미리보기</Text>
+                          <Image
+                            source={{ uri: proposalUrl }}
+                            style={s.previewImage}
+                            resizeMode="contain"
+                            onLoad={() => setProposalPreviewValid(true)}
+                            onError={() => setProposalPreviewValid(false)}
+                          />
+                          {proposalPreviewValid === true && (
+                            <Text style={{ fontSize: 12, color: COLORS.good, marginTop: 4 }}>✓ 이미지 확인됨</Text>
+                          )}
+                          {proposalPreviewValid === false && (
+                            <Text style={{ fontSize: 12, color: COLORS.error, marginTop: 4 }}>이미지를 불러올 수 없어요</Text>
+                          )}
+                        </View>
+                      )}
+                      <TouchableOpacity
+                        onPress={submitProposal}
+                        disabled={proposalSaving || !proposalPreviewValid}
+                        style={[s.saveBtn, (!proposalPreviewValid || proposalSaving) && { opacity: 0.5 }]}
+                      >
+                        {proposalSaving ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={s.saveBtnText}>제안하기</Text>
+                        )}
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              )}
 
               {/* 내 기록 */}
               {session && (
@@ -623,4 +725,43 @@ const s = StyleSheet.create({
   reviewNick: { fontSize: 12, fontWeight: "700", color: COLORS.text },
   reviewMemo: { fontSize: 13, color: "#404040", lineHeight: 20, marginTop: 4 },
   emptyText: { fontSize: 13, color: COLORS.subLight, textAlign: "center", padding: 16 },
+  imgProposalBtn: {
+    alignSelf: "flex-end",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 10,
+  },
+  imgProposalBtnText: { fontSize: 11, color: COLORS.sub, fontWeight: "600" },
+  proposalSection: {
+    marginBottom: 12,
+    padding: 14,
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  proposalInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 13,
+    color: COLORS.text,
+    backgroundColor: COLORS.surface,
+    marginBottom: 10,
+  },
+  previewContainer: { marginBottom: 10, alignItems: "center" },
+  previewLabel: { fontSize: 11, color: COLORS.sub, marginBottom: 6 },
+  previewImage: { width: 120, height: 120, borderRadius: 10, backgroundColor: "#e5e7eb" },
+  proposalSuccess: {
+    fontSize: 13,
+    color: COLORS.good,
+    fontWeight: "600",
+    lineHeight: 20,
+    textAlign: "center",
+    paddingVertical: 8,
+  },
 });
