@@ -71,6 +71,20 @@ export const getGenreStyle = (genres) => {
 };
 export { safeImageUrl };
 
+// ── 수정 가능한 필드 목록 ──────────────────────────────────────
+const EDIT_FIELDS = [
+  { key: "name_en",      label: "영문 이름",       type: "text" },
+  { key: "publisher",    label: "출판사",           type: "text" },
+  { key: "min_players",  label: "최소 인원",        type: "number" },
+  { key: "max_players",  label: "최대 인원",        type: "number" },
+  { key: "play_minutes", label: "플레이 시간(분)",  type: "number" },
+  { key: "min_age",      label: "권장 연령",        type: "number" },
+  { key: "genre",        label: "장르 (쉼표 구분)", type: "text" },
+  { key: "description",  label: "게임 설명",        type: "textarea" },
+  { key: "image_url",    label: "이미지 URL",       type: "image" },
+];
+
+// ── 별점 입력 ─────────────────────────────────────────────────
 function StarInput({ value, onChange }) {
   return (
     <View style={{ flexDirection: "row", gap: 6 }}>
@@ -83,7 +97,183 @@ function StarInput({ value, onChange }) {
   );
 }
 
-export default function GameCard({ game, session, reviewSummary, gameStat, onReviewSaved, cardWidth }) {
+// ── 게임 설정 편집 모달 (이미지 제안 통합) ─────────────────────
+function EditModal({ game, session, onClose, onSubmitted }) {
+  const [selectedField, setSelectedField] = useState(EDIT_FIELDS[0]);
+  const [newValue, setNewValue] = useState("");
+  const [imagePreviewValid, setImagePreviewValid] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const currentDisplay = () => {
+    const val = game[selectedField.key];
+    if (val == null) return "";
+    if (Array.isArray(val)) return val.join(", ");
+    return String(val);
+  };
+
+  const handleFieldSelect = (field) => {
+    setSelectedField(field);
+    setNewValue("");
+    setImagePreviewValid(null);
+  };
+
+  const handleSubmit = async () => {
+    const val = newValue.trim();
+    if (!val) { Alert.alert("알림", "새 값을 입력해주세요"); return; }
+    if (selectedField.key === "image_url") {
+      if (!val.startsWith("https://")) { Alert.alert("알림", "https://로 시작하는 URL을 입력해주세요"); return; }
+      if (!imagePreviewValid) { Alert.alert("알림", "유효한 이미지 URL이 아니에요"); return; }
+    }
+    setSaving(true);
+    let error;
+    if (selectedField.key === "image_url") {
+      ({ error } = await supabase.from("image_proposals").insert({
+        game_id: game.id,
+        user_id: session.user.id,
+        image_url: val,
+      }));
+    } else {
+      const oldVal = game[selectedField.key];
+      const serializedOld = oldVal == null ? null : Array.isArray(oldVal) ? JSON.stringify(oldVal) : String(oldVal);
+      const serializedNew = selectedField.key === "genre"
+        ? JSON.stringify(val.split(",").map((s) => s.trim()).filter(Boolean))
+        : val;
+      ({ error } = await supabase.from("game_edits").insert({
+        game_id: game.id,
+        user_id: session.user.id,
+        field_name: selectedField.key,
+        old_value: serializedOld,
+        new_value: serializedNew,
+      }));
+    }
+    setSaving(false);
+    if (error) { Alert.alert("오류", error.message); }
+    else { setSaved(true); onSubmitted?.(); }
+  };
+
+  return (
+    <Modal visible transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={em.backdrop} activeOpacity={1} onPress={onClose} />
+      <View style={em.sheet}>
+        {/* 헤더 */}
+        <View style={em.header}>
+          <View style={{ flex: 1 }}>
+            <Text style={em.title}>게임 설정 편집</Text>
+            <Text style={em.subtitle}>{game.name_ko}</Text>
+          </View>
+          <TouchableOpacity onPress={onClose} style={em.closeBtn}>
+            <Text style={{ color: COLORS.sub, fontSize: 14 }}>✕</Text>
+          </TouchableOpacity>
+        </View>
+
+        {saved ? (
+          <View style={{ padding: 24, alignItems: "center" }}>
+            <Text style={{ fontSize: 14, color: "#22c55e", fontWeight: "700", textAlign: "center", lineHeight: 22 }}>
+              ✅ 제안이 접수되었습니다.{"\n"}관리자 검토 후 반영됩니다.
+            </Text>
+            <TouchableOpacity onPress={onClose} style={[em.submitBtn, { marginTop: 16, width: "100%" }]}>
+              <Text style={em.submitBtnText}>닫기</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            {/* 필드 선택 */}
+            <Text style={em.label}>수정할 항목</Text>
+            <View style={em.chipRow}>
+              {EDIT_FIELDS.map((f) => (
+                <TouchableOpacity
+                  key={f.key}
+                  onPress={() => handleFieldSelect(f)}
+                  style={[em.chip, selectedField.key === f.key && em.chipActive]}
+                >
+                  <Text style={[em.chipText, selectedField.key === f.key && em.chipTextActive]}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* 현재 값 */}
+            <Text style={[em.label, { marginTop: 14 }]}>현재 값</Text>
+            <View style={em.currentValueBox}>
+              <Text style={{ fontSize: 13, color: currentDisplay() ? COLORS.text : COLORS.subLight }}>
+                {currentDisplay() || "값 없음"}
+              </Text>
+            </View>
+
+            {/* 새 값 */}
+            <Text style={[em.label, { marginTop: 14 }]}>새 값</Text>
+            {selectedField.type === "textarea" ? (
+              <TextInput
+                value={newValue}
+                onChangeText={setNewValue}
+                placeholder="새 값을 입력하세요"
+                placeholderTextColor={COLORS.subLight}
+                style={[em.input, { minHeight: 80, textAlignVertical: "top" }]}
+                multiline
+              />
+            ) : (
+              <TextInput
+                value={newValue}
+                onChangeText={(t) => { setNewValue(t); if (selectedField.key === "image_url") setImagePreviewValid(null); }}
+                placeholder={
+                  selectedField.key === "image_url" ? "https://..." :
+                  selectedField.key === "genre" ? "예: 전략, 협력" :
+                  "새 값을 입력하세요"
+                }
+                placeholderTextColor={COLORS.subLight}
+                style={em.input}
+                keyboardType={selectedField.type === "number" ? "numeric" : "default"}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            )}
+
+            {/* 이미지 미리보기 */}
+            {selectedField.key === "image_url" && newValue.startsWith("https://") && (
+              <View style={{ marginTop: 10, alignItems: "center" }}>
+                <Text style={[em.label, { alignSelf: "flex-start" }]}>미리보기</Text>
+                <Image
+                  source={{ uri: newValue }}
+                  style={{ width: 120, height: 120, borderRadius: 10, backgroundColor: "#e5e7eb" }}
+                  resizeMode="contain"
+                  onLoad={() => setImagePreviewValid(true)}
+                  onError={() => setImagePreviewValid(false)}
+                />
+                {imagePreviewValid === true && (
+                  <Text style={{ fontSize: 12, color: "#22c55e", marginTop: 4, fontWeight: "600" }}>✓ 이미지 확인됨</Text>
+                )}
+                {imagePreviewValid === false && (
+                  <Text style={{ fontSize: 12, color: COLORS.error, marginTop: 4 }}>이미지를 불러올 수 없어요</Text>
+                )}
+              </View>
+            )}
+
+            {/* 제출 버튼 */}
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={saving || !newValue.trim() || (selectedField.key === "image_url" && !imagePreviewValid)}
+              style={[
+                em.submitBtn,
+                { marginTop: 20 },
+                (saving || !newValue.trim() || (selectedField.key === "image_url" && !imagePreviewValid)) && { opacity: 0.5 },
+              ]}
+            >
+              {saving
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Text style={em.submitBtnText}>제안 제출</Text>
+              }
+            </TouchableOpacity>
+          </ScrollView>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+// ── GameCard ───────────────────────────────────────────────────
+export default function GameCard({ game, session, reviewSummary, gameStat, onReviewSaved, cardWidth, onGameAdd }) {
   const genreStyle = getGenreStyle(game.genre);
   const imageUrl = safeImageUrl(game.image_url);
   const [imgError, setImgError] = useState(false);
@@ -92,29 +282,26 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
   const flipAnim = useRef(new Animated.Value(0)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
 
+  // 리뷰 상태
   const [myReviews, setMyReviews] = useState(null);
   const [allReviews, setAllReviews] = useState(null);
   const [loadingReviews, setLoadingReviews] = useState(false);
+  const [allReviewsLoading, setAllReviewsLoading] = useState(false);
   const [likesMap, setLikesMap] = useState({});
+  const [reviewsShowCount, setReviewsShowCount] = useState(10);
 
+  // 폼 상태
   const [totalScore, setTotalScore] = useState(0);
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  const [showProposalForm, setShowProposalForm] = useState(false);
-  const [proposalUrl, setProposalUrl] = useState("");
-  const [proposalPreviewValid, setProposalPreviewValid] = useState(null);
-  const [proposalSaved, setProposalSaved] = useState(false);
-  const [proposalSaving, setProposalSaving] = useState(false);
+  // 편집 모달
+  const [showEditModal, setShowEditModal] = useState(false);
 
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [editField, setEditField] = useState(null);
-  const [editValue, setEditValue] = useState("");
-  const [editSaving, setEditSaving] = useState(false);
-  const [editSaved, setEditSaved] = useState(false);
-
+  // ── 애니메이션 ──────────────────────────────────────────────
   const frontRotateY = flipAnim.interpolate({
     inputRange: [0, 180],
     outputRange: ["0deg", "180deg"],
@@ -132,6 +319,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
     outputRange: [0, 0, 1, 1],
   });
 
+  // ── 데이터 로딩 ─────────────────────────────────────────────
   const loadMyReviews = async () => {
     if (!session || myReviews !== null) return;
     setLoadingReviews(true);
@@ -148,15 +336,20 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
   };
 
   const loadAllReviews = async () => {
+    setAllReviewsLoading(true);
     const { data: rows } = await supabase
       .from("reviews")
       .select("id, user_id, total_score, memo, created_at")
       .eq("game_id", game.id)
       .not("total_score", "is", null)
       .order("created_at", { ascending: false })
-      .limit(30);
+      .limit(50);
 
-    if (!rows || rows.length === 0) { setAllReviews([]); return; }
+    if (!rows || rows.length === 0) {
+      setAllReviews([]);
+      setAllReviewsLoading(false);
+      return;
+    }
 
     const userIds = [...new Set(rows.map((r) => r.user_id))];
     const reviewIds = rows.map((r) => r.id);
@@ -180,8 +373,24 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
 
     setAllReviews(rows.map((r) => ({ ...r, nickname: nickMap[r.user_id] || "익명" })));
     setLikesMap(lMap);
+    setAllReviewsLoading(false);
   };
 
+  const toggleLike = async (reviewId) => {
+    if (!session) { Alert.alert("로그인이 필요합니다"); return; }
+    const cur = likesMap[reviewId] || { count: 0, likedByMe: false };
+    const wasLiked = cur.likedByMe;
+    setLikesMap((prev) => ({
+      ...prev,
+      [reviewId]: { count: wasLiked ? Math.max(0, cur.count - 1) : cur.count + 1, likedByMe: !wasLiked },
+    }));
+    const { error } = wasLiked
+      ? await supabase.from("review_likes").delete().eq("review_id", reviewId).eq("user_id", session.user.id)
+      : await supabase.from("review_likes").insert({ review_id: reviewId, user_id: session.user.id });
+    if (error) setLikesMap((prev) => ({ ...prev, [reviewId]: cur }));
+  };
+
+  // ── 카드 열기/닫기 ──────────────────────────────────────────
   const openCard = () => {
     setExpanded(true);
     flipAnim.setValue(0);
@@ -204,80 +413,21 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       setExpanded(false);
       setMyReviews(null);
       setAllReviews(null);
+      setAllReviewsLoading(false);
       setLikesMap({});
+      setReviewsShowCount(10);
       setTotalScore(0);
       setMemo("");
       setEditingId(null);
       setShowForm(false);
-      setShowProposalForm(false);
-      setProposalUrl("");
-      setProposalPreviewValid(null);
-      setProposalSaved(false);
-      setProposalSaving(false);
-      setShowEditForm(false);
-      setEditField(null);
-      setEditValue("");
-      setEditSaving(false);
-      setEditSaved(false);
+      setConfirmDeleteId(null);
+      setShowEditModal(false);
     });
   };
 
-  const submitProposal = async () => {
-    const url = proposalUrl.trim();
-    if (!url.startsWith("https://")) {
-      Alert.alert("알림", "https://로 시작하는 이미지 URL을 입력해주세요");
-      return;
-    }
-    if (!proposalPreviewValid) {
-      Alert.alert("알림", "유효한 이미지 URL이 아니에요. 이미지가 로드될 때까지 기다려주세요.");
-      return;
-    }
-    setProposalSaving(true);
-    const { error } = await supabase.from("image_proposals").insert({
-      game_id: game.id,
-      user_id: session.user.id,
-      image_url: url,
-    });
-    setProposalSaving(false);
-    if (error) {
-      Alert.alert("오류", error.message);
-    } else {
-      setProposalSaved(true);
-    }
-  };
-
-  const EDITABLE_FIELDS = [
-    { key: "name_ko", label: "한글 이름", current: game.name_ko || "" },
-    { key: "name_en", label: "영문 이름", current: game.name_en || "" },
-    { key: "min_players", label: "최소 인원", current: String(game.min_players ?? "") },
-    { key: "max_players", label: "최대 인원", current: String(game.max_players ?? "") },
-    { key: "play_minutes", label: "플레이 시간(분)", current: String(game.play_minutes ?? "") },
-  ];
-
-  const submitEditProposal = async () => {
-    if (!editField || !editValue.trim()) {
-      Alert.alert("알림", "필드와 값을 입력해주세요");
-      return;
-    }
-    const field = EDITABLE_FIELDS.find((f) => f.key === editField);
-    setEditSaving(true);
-    const { error } = await supabase.from("game_edits").insert({
-      game_id: game.id,
-      user_id: session.user.id,
-      field_name: editField,
-      old_value: field?.current || null,
-      new_value: editValue.trim(),
-    });
-    setEditSaving(false);
-    if (error) Alert.alert("오류", error.message);
-    else setEditSaved(true);
-  };
-
+  // ── 기록 저장/삭제 ───────────────────────────────────────────
   const handleSave = async () => {
-    if (!session || totalScore === 0) {
-      Alert.alert("알림", "별점을 선택해주세요");
-      return;
-    }
+    if (!session || totalScore === 0) { Alert.alert("알림", "별점을 선택해주세요"); return; }
     setSaving(true);
     const payload = { total_score: totalScore, memo: memo.trim() || null, rating_mode: "total" };
     let error;
@@ -287,43 +437,20 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       ({ error } = await supabase.from("reviews").insert({ ...payload, game_id: game.id, user_id: session.user.id }));
     }
     setSaving(false);
-    if (error) {
-      Alert.alert("오류", error.message);
-    } else {
-      onReviewSaved?.();
-      closeCard();
-    }
+    if (error) { Alert.alert("오류", error.message); }
+    else { onReviewSaved?.(); closeCard(); }
   };
 
-  const handleDelete = (reviewId) => {
-    Alert.alert("기록 삭제", "정말 삭제할까요?", [
-      { text: "취소", style: "cancel" },
-      {
-        text: "삭제", style: "destructive", onPress: async () => {
-          const { error } = await supabase.from("reviews").delete().eq("id", reviewId).eq("user_id", session.user.id);
-          if (!error) {
-            setMyReviews((prev) => prev?.filter((r) => r.id !== reviewId) ?? []);
-            setAllReviews((prev) => prev?.filter((r) => r.id !== reviewId) ?? null);
-            if (editingId === reviewId) { setEditingId(null); setTotalScore(0); setMemo(""); }
-            onReviewSaved?.();
-          }
-        },
-      },
-    ]);
-  };
-
-  const toggleLike = async (reviewId) => {
-    if (!session) { Alert.alert("로그인이 필요합니다"); return; }
-    const cur = likesMap[reviewId] || { count: 0, likedByMe: false };
-    const wasLiked = cur.likedByMe;
-    setLikesMap((prev) => ({
-      ...prev,
-      [reviewId]: { count: wasLiked ? Math.max(0, cur.count - 1) : cur.count + 1, likedByMe: !wasLiked },
-    }));
-    const { error } = wasLiked
-      ? await supabase.from("review_likes").delete().eq("review_id", reviewId).eq("user_id", session.user.id)
-      : await supabase.from("review_likes").insert({ review_id: reviewId, user_id: session.user.id });
-    if (error) setLikesMap((prev) => ({ ...prev, [reviewId]: cur }));
+  const handleDelete = async (reviewId) => {
+    const { error } = await supabase.from("reviews").delete().eq("id", reviewId).eq("user_id", session.user.id);
+    if (error) { Alert.alert("오류", error.message); return; }
+    setConfirmDeleteId(null);
+    const updated = (myReviews || []).filter((r) => r.id !== reviewId);
+    setMyReviews(updated);
+    setAllReviews((prev) => prev ? prev.filter((r) => r.id !== reviewId) : prev);
+    if (editingId === reviewId) { setEditingId(null); setTotalScore(0); setMemo(""); }
+    if (updated.length === 0) setShowForm(true);
+    onReviewSaved?.();
   };
 
   const w = cardWidth || (SW - 24 - 16) / 3;
@@ -331,6 +458,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
 
   return (
     <>
+      {/* ── 그리드 카드 ── */}
       <TouchableOpacity onPress={openCard} activeOpacity={0.85} style={[s.card, { width: w }]}>
         <View style={[s.imgContainer, { height: imgH, backgroundColor: genreStyle.grad[0] }]}>
           {!imgError && imageUrl ? (
@@ -376,6 +504,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
         </View>
       </TouchableOpacity>
 
+      {/* ── 플립 모달 ── */}
       <Modal visible={expanded} transparent statusBarTranslucent>
         <Animated.View style={[s.backdrop, { opacity: overlayAnim }]}>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={closeCard} activeOpacity={1} />
@@ -386,6 +515,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
           <Animated.View style={[s.face, {
             transform: [{ perspective: 1000 }, { rotateY: frontRotateY }],
             opacity: frontOpacity,
+            backfaceVisibility: "hidden",
             backgroundColor: genreStyle.grad[0],
           }]}>
             {!imgError && imageUrl ? (
@@ -399,9 +529,14 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
           <Animated.View style={[s.face, {
             transform: [{ perspective: 1000 }, { rotateY: backRotateY }],
             opacity: backOpacity,
+            backfaceVisibility: "hidden",
             backgroundColor: COLORS.surface,
           }]}>
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 20, paddingBottom: 32 }}
+              keyboardShouldPersistTaps="handled"
+            >
               {/* 헤더 */}
               <View style={s.backHeader}>
                 <Text style={s.backTitle} numberOfLines={1}>{game.name_ko || game.name_en}</Text>
@@ -410,159 +545,69 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                 </TouchableOpacity>
               </View>
 
-              {/* 게임 정보 */}
-              <View style={[s.gameInfoRow, { backgroundColor: genreStyle.grad[0] + "55" }]}>
-                <View style={[s.gameThumb, { backgroundColor: genreStyle.grad[0] }]}>
-                  {!imgError && imageUrl ? (
-                    <Image source={{ uri: imageUrl }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-                  ) : (
-                    <Text style={{ fontSize: 32 }}>{genreStyle.emoji}</Text>
-                  )}
-                </View>
-                <View style={{ flex: 1, gap: 5 }}>
-                  {game.name_en ? <Text style={s.nameEn} numberOfLines={1}>{game.name_en}</Text> : null}
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
-                    {game.genre?.map((g) => (
-                      <View key={g} style={s.genreChip}>
-                        <Text style={s.genreChipText}>{g}</Text>
-                      </View>
-                    ))}
+              {/* 게임 정보 카드 */}
+              <View style={s.gameInfoCard}>
+                <View style={{ flexDirection: "row", gap: 12, marginBottom: 10 }}>
+                  {/* 썸네일 */}
+                  <View style={[s.gameThumb, { backgroundColor: genreStyle.grad[0] }]}>
+                    {!imgError && imageUrl ? (
+                      <Image source={{ uri: imageUrl }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                    ) : (
+                      <Text style={{ fontSize: 32 }}>{genreStyle.emoji}</Text>
+                    )}
                   </View>
-                  <Text style={s.gameMetaText}>
-                    {[
-                      game.min_players && `👥 ${game.min_players}~${game.max_players}인`,
-                      game.play_minutes && `⏱ ${game.play_minutes}분`,
-                    ].filter(Boolean).join("  ")}
-                  </Text>
-                </View>
-              </View>
-
-              {/* 제안 버튼 (두 폼 모두 닫혀있을 때) */}
-              {session && !showProposalForm && !showEditForm && (
-                <View style={s.proposalBtnRow}>
-                  <TouchableOpacity style={[s.imgProposalBtn, { flex: 1 }]} onPress={() => setShowProposalForm(true)}>
-                    <Text style={s.imgProposalBtnText}>📷 이미지 제안</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[s.imgProposalBtn, { flex: 1 }]} onPress={() => setShowEditForm(true)}>
-                    <Text style={s.imgProposalBtnText}>📝 정보 수정 제안</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* 이미지 제안 폼 */}
-              {session && showProposalForm && (
-                <View style={s.proposalSection}>
-                  <View style={s.sectionHeaderRow}>
-                    <Text style={s.sectionTitle}>📷 이미지 제안</Text>
-                    <TouchableOpacity onPress={() => { setShowProposalForm(false); setProposalSaved(false); setProposalUrl(""); setProposalPreviewValid(null); }}>
-                      <Text style={{ fontSize: 12, color: COLORS.sub }}>✕ 닫기</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {proposalSaved ? (
-                    <Text style={s.proposalSuccess}>
-                      ✅ 이미지 제안이 등록되었습니다. 관리자 검토 후 반영됩니다.
-                    </Text>
-                  ) : (
-                    <>
-                      <TextInput
-                        value={proposalUrl}
-                        onChangeText={(t) => { setProposalUrl(t); setProposalPreviewValid(null); }}
-                        placeholder="https://로 시작하는 이미지 URL"
-                        placeholderTextColor={COLORS.subLight}
-                        style={s.proposalInput}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        keyboardType="url"
-                      />
-                      {proposalUrl.startsWith("https://") && (
-                        <View style={s.previewContainer}>
-                          <Text style={s.previewLabel}>미리보기</Text>
-                          <Image
-                            source={{ uri: proposalUrl }}
-                            style={s.previewImage}
-                            resizeMode="contain"
-                            onLoad={() => setProposalPreviewValid(true)}
-                            onError={() => setProposalPreviewValid(false)}
-                          />
-                          {proposalPreviewValid === true && (
-                            <Text style={{ fontSize: 12, color: COLORS.good, marginTop: 4 }}>✓ 이미지 확인됨</Text>
-                          )}
-                          {proposalPreviewValid === false && (
-                            <Text style={{ fontSize: 12, color: COLORS.error, marginTop: 4 }}>이미지를 불러올 수 없어요</Text>
-                          )}
-                        </View>
-                      )}
-                      <TouchableOpacity
-                        onPress={submitProposal}
-                        disabled={proposalSaving || !proposalPreviewValid}
-                        style={[s.saveBtn, (!proposalPreviewValid || proposalSaving) && { opacity: 0.5 }]}
-                      >
-                        {proposalSaving ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <Text style={s.saveBtnText}>제안하기</Text>
-                        )}
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </View>
-              )}
-
-              {/* 정보 수정 제안 폼 */}
-              {session && showEditForm && (
-                <View style={s.proposalSection}>
-                  <View style={s.sectionHeaderRow}>
-                    <Text style={s.sectionTitle}>📝 정보 수정 제안</Text>
-                    <TouchableOpacity onPress={() => { setShowEditForm(false); setEditSaved(false); setEditField(null); setEditValue(""); }}>
-                      <Text style={{ fontSize: 12, color: COLORS.sub }}>✕ 닫기</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {editSaved ? (
-                    <Text style={s.proposalSuccess}>✅ 수정 제안이 등록되었습니다. 관리자 검토 후 반영됩니다.</Text>
-                  ) : (
-                    <>
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-                        {EDITABLE_FIELDS.map((f) => (
-                          <TouchableOpacity
-                            key={f.key}
-                            onPress={() => { setEditField(f.key); setEditValue(f.current); }}
-                            style={[s.fieldChip, editField === f.key && s.fieldChipActive]}
-                          >
-                            <Text style={[s.fieldChipText, editField === f.key && s.fieldChipTextActive]}>{f.label}</Text>
-                          </TouchableOpacity>
+                  {/* 정보 */}
+                  <View style={{ flex: 1 }}>
+                    {game.name_en ? <Text style={s.nameEn} numberOfLines={1}>{game.name_en}</Text> : null}
+                    {game.genre?.length > 0 && (
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+                        {game.genre.map((g) => (
+                          <View key={g} style={s.genreChip}>
+                            <Text style={s.genreChipText}>{g}</Text>
+                          </View>
                         ))}
                       </View>
-                      {editField && (
-                        <>
-                          <TextInput
-                            value={editValue}
-                            onChangeText={setEditValue}
-                            placeholder="새로운 값을 입력하세요"
-                            placeholderTextColor={COLORS.subLight}
-                            style={s.proposalInput}
-                          />
-                          <TouchableOpacity
-                            onPress={submitEditProposal}
-                            disabled={editSaving || !editValue.trim()}
-                            style={[s.saveBtn, (editSaving || !editValue.trim()) && { opacity: 0.5 }]}
-                          >
-                            {editSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={s.saveBtnText}>제안하기</Text>}
-                          </TouchableOpacity>
-                        </>
-                      )}
-                    </>
-                  )}
+                    )}
+                    <Text style={s.gameMetaText}>
+                      {[
+                        game.min_players && `👥 ${game.min_players}~${game.max_players}인`,
+                        game.play_minutes && `⏱ ${game.play_minutes}분`,
+                        game.min_age && `🔞 ${game.min_age}세+`,
+                      ].filter(Boolean).join("  ")}
+                    </Text>
+                    {gameStat && (
+                      <View style={s.communityRatingRow}>
+                        <Text style={s.communityRatingText}>★ {gameStat.avg.toFixed(1)}</Text>
+                        <Text style={s.communityRatingCount}> · {gameStat.count}명 평가</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-              )}
+                {game.description ? (
+                  <Text style={s.descText} numberOfLines={3}>{game.description}</Text>
+                ) : null}
+                {/* 액션 버튼 */}
+                {session && (
+                  <View style={s.actionBtnRow}>
+                    <TouchableOpacity style={s.actionBtn} onPress={() => setShowEditModal(true)}>
+                      <Text style={s.actionBtnText}>✏️ 게임 설정 편집</Text>
+                    </TouchableOpacity>
+                    {onGameAdd && (
+                      <TouchableOpacity style={[s.actionBtn, s.actionBtnAccent]} onPress={onGameAdd}>
+                        <Text style={[s.actionBtnText, { color: COLORS.accent }]}>+ 게임 추가</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
 
               {/* 내 기록 */}
               {session && (
-                <View style={s.formSection}>
+                <View style={s.sectionBox}>
                   <View style={s.sectionHeaderRow}>
                     <Text style={s.sectionTitle}>내 기록</Text>
                     {myReviews?.length > 0 && !showForm && (
-                      <TouchableOpacity onPress={() => setShowForm(true)}>
+                      <TouchableOpacity onPress={() => { setEditingId(null); setTotalScore(0); setMemo(""); setShowForm(true); }}>
                         <Text style={{ fontSize: 12, color: COLORS.accent, fontWeight: "700" }}>+ 새 기록</Text>
                       </TouchableOpacity>
                     )}
@@ -572,98 +617,184 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                     <ActivityIndicator size="small" color={COLORS.accent} />
                   ) : (
                     <>
-                      {myReviews?.map((r) => (
-                        <View key={r.id} style={s.myReviewItem}>
-                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                            <Text style={{ color: COLORS.accent, fontWeight: "700" }}>⭐ {Number(r.total_score).toFixed(1)}</Text>
-                            <Text style={{ fontSize: 11, color: COLORS.subLight }}>{r.created_at?.slice(0, 10)}</Text>
+                      {myReviews?.map((r) => {
+                        if (confirmDeleteId === r.id) {
+                          return (
+                            <View key={r.id} style={s.deleteConfirmBox}>
+                              <Text style={s.deleteConfirmText}>정말 삭제할까요?{"\n"}되돌릴 수 없어요.</Text>
+                              <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+                                <TouchableOpacity onPress={() => setConfirmDeleteId(null)} style={s.deleteCancelBtn}>
+                                  <Text style={{ color: COLORS.sub, fontWeight: "700", fontSize: 12 }}>취소</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => handleDelete(r.id)} style={s.deleteBtn}>
+                                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>삭제</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          );
+                        }
+                        return (
+                          <View key={r.id} style={[s.myReviewItem, editingId === r.id && s.myReviewItemEditing]}>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                              <Text style={{ fontSize: 11, color: COLORS.sub }}>{r.created_at?.slice(0, 10)}</Text>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                <Text style={{ color: COLORS.accent, fontWeight: "700", fontSize: 11 }}>★ {Number(r.total_score).toFixed(1)}</Text>
+                                <TouchableOpacity onPress={() => { setEditingId(r.id); setTotalScore(r.total_score || 0); setMemo(r.memo || ""); setShowForm(true); }} hitSlop={6}>
+                                  <Text style={{ fontSize: 13 }}>✏️</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setConfirmDeleteId(r.id)} hitSlop={6}>
+                                  <Text style={{ fontSize: 13 }}>🗑️</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                            {r.memo ? <Text style={s.reviewMemo}>{r.memo}</Text> : null}
                           </View>
-                          {r.memo ? <Text style={s.reviewMemo}>{r.memo}</Text> : null}
-                          <View style={{ flexDirection: "row", gap: 12, marginTop: 6 }}>
-                            <TouchableOpacity onPress={() => {
-                              setEditingId(r.id);
-                              setTotalScore(r.total_score || 0);
-                              setMemo(r.memo || "");
-                              setShowForm(true);
-                            }}>
-                              <Text style={{ fontSize: 12, color: COLORS.sub }}>수정</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => handleDelete(r.id)}>
-                              <Text style={{ fontSize: 12, color: COLORS.error }}>삭제</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      ))}
+                        );
+                      })}
 
+                      {/* 기록 폼 */}
                       {showForm && (
-                        <View style={s.writeForm}>
-                          <Text style={s.formLabel}>⭐ 별점 <Text style={{ color: COLORS.accent }}>필수</Text></Text>
-                          <StarInput value={totalScore} onChange={setTotalScore} />
-                          <Text style={[s.scoreDisplay, { color: totalScore > 0 ? COLORS.accent : COLORS.subLight }]}>
-                            {totalScore > 0 ? `${totalScore}.0 / 5` : "별을 선택해주세요"}
-                          </Text>
+                        <View style={s.writeFormBox}>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                            <Text style={{ fontSize: 13, fontWeight: "800", color: COLORS.text }}>
+                              {editingId ? "기록 수정하기" : "새 기록 추가"}
+                            </Text>
+                            <TouchableOpacity onPress={() => { setShowForm(false); setEditingId(null); setTotalScore(0); setMemo(""); }}>
+                              <Text style={{ fontSize: 11, color: COLORS.sub, fontWeight: "600", borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>취소</Text>
+                            </TouchableOpacity>
+                          </View>
+                          {/* 별점 */}
+                          <View style={s.starBox}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                              <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.sub }}>⭐ 총점</Text>
+                              <View style={{ backgroundColor: COLORS.accentLight, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
+                                <Text style={{ fontSize: 10, color: COLORS.accent, fontWeight: "700" }}>필수</Text>
+                              </View>
+                            </View>
+                            <StarInput value={totalScore} onChange={setTotalScore} />
+                            <Text style={[s.scoreDisplay, { color: totalScore > 0 ? COLORS.accent : COLORS.subLight }]}>
+                              {totalScore > 0 ? `${totalScore}.0 / 5` : "별을 선택해주세요"}
+                            </Text>
+                          </View>
+                          {/* 메모 */}
                           <TextInput
                             value={memo}
                             onChangeText={setMemo}
-                            placeholder="한 줄 감상을 남겨보세요 (선택)"
+                            placeholder="후기, 전략, 감상을 자유롭게 기록해요"
                             placeholderTextColor={COLORS.subLight}
                             style={s.memoInput}
                             multiline
                           />
+                          {/* 저장 */}
                           <TouchableOpacity
                             onPress={handleSave}
                             disabled={saving || totalScore === 0}
-                            style={[s.saveBtn, (saving || totalScore === 0) && { opacity: 0.5 }]}
+                            style={[s.saveBtn, (saving || totalScore === 0) && { opacity: 0.45 }]}
                           >
-                            {saving ? (
-                              <ActivityIndicator size="small" color="#fff" />
-                            ) : (
-                              <Text style={s.saveBtnText}>{editingId ? "수정 완료" : "기록하기"}</Text>
-                            )}
+                            {saving
+                              ? <ActivityIndicator size="small" color="#fff" />
+                              : <Text style={s.saveBtnText}>{editingId ? "수정하기" : "기록 저장하기"}</Text>
+                            }
                           </TouchableOpacity>
                         </View>
+                      )}
+
+                      {!showForm && (!myReviews || myReviews.length === 0) && (
+                        <TouchableOpacity style={s.firstRecordBtn} onPress={() => setShowForm(true)}>
+                          <Text style={s.firstRecordBtnText}>⭐ 이 게임의 첫 기록을 남겨보세요!</Text>
+                        </TouchableOpacity>
                       )}
                     </>
                   )}
                 </View>
               )}
 
-              {/* 전체 리뷰 */}
-              <View style={{ marginTop: 8 }}>
-                <Text style={[s.sectionTitle, { marginBottom: 8 }]}>모든 기록</Text>
-                {allReviews === null ? (
-                  <ActivityIndicator size="small" color={COLORS.accent} />
-                ) : allReviews.length === 0 ? (
-                  <Text style={s.emptyText}>아직 기록이 없어요</Text>
-                ) : (
-                  allReviews.map((r) => (
-                    <View key={r.id} style={s.reviewItem}>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                        <Text style={s.reviewNick}>{r.nickname}</Text>
-                        <Text style={{ color: COLORS.accent, fontWeight: "700", fontSize: 13 }}>⭐ {Number(r.total_score).toFixed(1)}</Text>
-                      </View>
-                      {r.memo ? <Text style={s.reviewMemo}>{r.memo}</Text> : null}
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                        <Text style={{ fontSize: 11, color: COLORS.subLight }}>{r.created_at?.slice(0, 10)}</Text>
-                        <TouchableOpacity onPress={() => toggleLike(r.id)} hitSlop={8}>
-                          <Text style={{ color: likesMap[r.id]?.likedByMe ? COLORS.accent : COLORS.subLight, fontSize: 14 }}>
-                            {likesMap[r.id]?.likedByMe ? "♥" : "♡"} {likesMap[r.id]?.count || 0}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
+              {/* 다른 사람 리뷰 */}
+              {(() => {
+                if (allReviews === null) return null;
+                const scores = allReviews.filter((r) => r.total_score > 0).map((r) => r.total_score);
+                const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+                const others = session ? allReviews.filter((r) => r.user_id !== session.user.id) : allReviews;
+                const visible = others.slice(0, reviewsShowCount);
+                return (
+                  <View style={[s.sectionBox, { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 16, marginTop: 4 }]}>
+                    <View style={s.sectionHeaderRow}>
+                      <Text style={s.sectionTitle}>다른 사람 리뷰</Text>
+                      {avg !== null && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Text style={{ color: COLORS.accent, fontWeight: "700", fontSize: 12 }}>★ {avg.toFixed(1)}</Text>
+                          <Text style={{ color: COLORS.subLight, fontSize: 11 }}>· {allReviews.length}개</Text>
+                        </View>
+                      )}
                     </View>
-                  ))
-                )}
-              </View>
+                    {allReviewsLoading ? (
+                      <ActivityIndicator size="small" color={COLORS.accent} />
+                    ) : others.length === 0 ? (
+                      <Text style={s.emptyText}>다른 사람의 리뷰가 아직 없어요</Text>
+                    ) : (
+                      <>
+                        {visible.map((r) => (
+                          <View key={r.id} style={s.reviewItem}>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 4 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                <Text style={s.reviewNick}>{r.nickname}</Text>
+                                {r.total_score > 0 && (
+                                  <Text style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700" }}>★ {Number(r.total_score).toFixed(1)}</Text>
+                                )}
+                              </View>
+                              <Text style={{ fontSize: 11, color: COLORS.subLight }}>{r.created_at?.slice(0, 10)}</Text>
+                            </View>
+                            {r.memo ? <Text style={s.reviewMemoText}>{r.memo}</Text> : null}
+                            {r.user_id !== session?.user.id && (
+                              <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 6 }}>
+                                <TouchableOpacity
+                                  onPress={() => toggleLike(r.id)}
+                                  style={[s.likeBtn, likesMap[r.id]?.likedByMe && s.likeBtnActive]}
+                                >
+                                  <Text style={{ fontSize: 14, color: likesMap[r.id]?.likedByMe ? COLORS.accent : COLORS.subLight }}>
+                                    {likesMap[r.id]?.likedByMe ? "♥" : "♡"}
+                                  </Text>
+                                  {(likesMap[r.id]?.count || 0) > 0 && (
+                                    <Text style={{ fontSize: 12, fontWeight: "600", color: likesMap[r.id]?.likedByMe ? COLORS.accent : COLORS.subLight }}>
+                                      {likesMap[r.id].count}
+                                    </Text>
+                                  )}
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </View>
+                        ))}
+                        {others.length > reviewsShowCount && (
+                          <TouchableOpacity style={s.loadMoreBtn} onPress={() => setReviewsShowCount((n) => n + 10)}>
+                            <Text style={s.loadMoreBtnText}>더 보기 (+{others.length - reviewsShowCount}개)</Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )}
+                  </View>
+                );
+              })()}
             </ScrollView>
           </Animated.View>
         </View>
       </Modal>
+
+      {/* 게임 설정 편집 모달 */}
+      {showEditModal && session && (
+        <EditModal
+          game={game}
+          session={session}
+          onClose={() => setShowEditModal(false)}
+          onSubmitted={() => {}}
+        />
+      )}
     </>
   );
 }
 
+// ── 스타일 ────────────────────────────────────────────────────
 const s = StyleSheet.create({
+  // 그리드 카드
   card: {
     backgroundColor: COLORS.surface,
     borderRadius: 12,
@@ -683,23 +814,15 @@ const s = StyleSheet.create({
     overflow: "hidden",
   },
   genreBadge: {
-    position: "absolute",
-    top: 5,
-    left: 5,
+    position: "absolute", top: 5, left: 5,
     backgroundColor: "rgba(255,255,255,0.85)",
-    borderRadius: 5,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
+    borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2,
   },
   genreBadgeText: { fontSize: 8, fontWeight: "700", color: COLORS.text },
   scoreBadge: {
-    position: "absolute",
-    top: 5,
-    right: 5,
+    position: "absolute", top: 5, right: 5,
     backgroundColor: "rgba(255,107,53,0.88)",
-    borderRadius: 5,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
+    borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2,
   },
   scoreBadgeText: { fontSize: 8, fontWeight: "700", color: "#fff" },
   cardInfo: { padding: 6 },
@@ -708,13 +831,15 @@ const s = StyleSheet.create({
   statRow: { flexDirection: "row", alignItems: "center" },
   statAvg: { fontSize: 10, fontWeight: "700", color: COLORS.accent },
   statCount: { fontSize: 9, color: COLORS.subLight },
+
+  // 플립 모달
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" },
   modalWrapper: {
     position: "absolute",
-    top: SH * 0.07,
+    top: SH * 0.05,
     left: SW * 0.04,
     right: SW * 0.04,
-    height: SH * 0.86,
+    height: SH * 0.88,
   },
   face: {
     position: "absolute",
@@ -724,11 +849,13 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
+  // 뒷면 헤더
   backHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
+    marginBottom: 16,
   },
   backTitle: { flex: 1, fontSize: 17, fontWeight: "800", color: COLORS.text, marginRight: 8 },
   closeBtn: {
@@ -737,40 +864,55 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
   },
-  gameInfoRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 16,
-    padding: 12,
-    borderRadius: 12,
+
+  // 게임 정보 카드
+  gameInfoCard: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 16,
   },
   gameThumb: {
-    width: 64, height: 64,
+    width: 68, height: 68,
     borderRadius: 10,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
-  nameEn: { fontSize: 11, color: COLORS.subLight },
+  nameEn: { fontSize: 11, color: COLORS.subLight, marginBottom: 4 },
   genreChip: {
-    backgroundColor: "rgba(0,0,0,0.07)",
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    backgroundColor: "rgba(0,0,0,0.07)", borderRadius: 8,
+    paddingHorizontal: 6, paddingVertical: 2,
   },
   genreChipText: { fontSize: 10, fontWeight: "700", color: COLORS.text },
-  gameMetaText: { fontSize: 12, color: COLORS.sub },
-  formSection: {
-    marginBottom: 12,
-    padding: 14,
-    backgroundColor: COLORS.bg,
-    borderRadius: 12,
+  gameMetaText: { fontSize: 12, color: COLORS.sub, marginTop: 4 },
+  communityRatingRow: { flexDirection: "row", alignItems: "center", marginTop: 5 },
+  communityRatingText: { fontSize: 11, color: COLORS.accent, fontWeight: "700" },
+  communityRatingCount: { fontSize: 11, color: COLORS.subLight },
+  descText: { fontSize: 12, color: COLORS.sub, lineHeight: 18, marginTop: 2, marginBottom: 10 },
+
+  // 액션 버튼
+  actionBtnRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
+    alignItems: "center",
   },
+  actionBtnAccent: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accentLight,
+  },
+  actionBtnText: { fontSize: 11, fontWeight: "700", color: COLORS.sub },
+
+  // 섹션
+  sectionBox: { marginBottom: 16 },
   sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -778,6 +920,8 @@ const s = StyleSheet.create({
     marginBottom: 10,
   },
   sectionTitle: { fontSize: 14, fontWeight: "800", color: COLORS.text },
+
+  // 내 기록 아이템
   myReviewItem: {
     padding: 10,
     backgroundColor: COLORS.surface,
@@ -786,19 +930,57 @@ const s = StyleSheet.create({
     borderColor: COLORS.border,
     marginBottom: 8,
   },
-  writeForm: { marginTop: 8, gap: 10 },
-  formLabel: { fontSize: 13, fontWeight: "700", color: COLORS.text },
-  scoreDisplay: { fontSize: 14, fontWeight: "700", textAlign: "center" },
-  memoInput: {
+  myReviewItemEditing: {
+    borderColor: COLORS.accent,
+    backgroundColor: "#fff7f5",
+  },
+
+  // 삭제 확인
+  deleteConfirmBox: {
+    backgroundColor: "#fee2e2",
+    borderWidth: 1, borderColor: "#fca5a5",
+    borderRadius: 8, padding: 12, marginBottom: 8,
+  },
+  deleteConfirmText: { fontSize: 12, fontWeight: "700", color: "#991b1b", lineHeight: 18 },
+  deleteCancelBtn: {
+    flex: 1, paddingVertical: 7,
+    borderWidth: 1, borderColor: "#fca5a5",
+    borderRadius: 8, alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  deleteBtn: {
+    flex: 1, paddingVertical: 7,
+    borderRadius: 8, alignItems: "center",
+    backgroundColor: COLORS.error,
+  },
+
+  // 기록 폼
+  writeFormBox: {
+    marginTop: 8,
+    padding: 16,
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 13,
-    color: COLORS.text,
+  },
+  starBox: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  scoreDisplay: { marginTop: 8, fontSize: 14, fontWeight: "700" },
+  memoInput: {
+    borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 8, padding: 10,
+    fontSize: 13, color: COLORS.text,
     minHeight: 60,
     backgroundColor: COLORS.surface,
     textAlignVertical: "top",
+    marginBottom: 12,
   },
   saveBtn: {
     backgroundColor: COLORS.accent,
@@ -807,69 +989,107 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   saveBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  firstRecordBtn: {
+    backgroundColor: COLORS.accentLight,
+    borderWidth: 1, borderColor: COLORS.accent,
+    borderRadius: 10, paddingVertical: 12,
+    alignItems: "center",
+  },
+  firstRecordBtnText: { fontSize: 13, fontWeight: "700", color: COLORS.accent },
+
+  // 리뷰 아이템
   reviewItem: {
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   reviewNick: { fontSize: 12, fontWeight: "700", color: COLORS.text },
-  reviewMemo: { fontSize: 13, color: "#404040", lineHeight: 20, marginTop: 4 },
-  emptyText: { fontSize: 13, color: COLORS.subLight, textAlign: "center", padding: 16 },
-  imgProposalBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
+  reviewMemo: { fontSize: 11, color: COLORS.sub, lineHeight: 16, marginTop: 3 },
+  reviewMemoText: { fontSize: 13, color: "#404040", lineHeight: 20, wordBreak: "break-word" },
+  likeBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6,
   },
-  imgProposalBtnText: { fontSize: 11, color: COLORS.sub, fontWeight: "600" },
-  proposalSection: {
-    marginBottom: 12,
-    padding: 14,
-    backgroundColor: COLORS.bg,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  proposalInput: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 13,
-    color: COLORS.text,
-    backgroundColor: COLORS.surface,
-    marginBottom: 10,
-  },
-  previewContainer: { marginBottom: 10, alignItems: "center" },
-  previewLabel: { fontSize: 11, color: COLORS.sub, marginBottom: 6 },
-  previewImage: { width: 120, height: 120, borderRadius: 10, backgroundColor: "#e5e7eb" },
-  proposalSuccess: {
-    fontSize: 13,
-    color: COLORS.good,
-    fontWeight: "600",
-    lineHeight: 20,
-    textAlign: "center",
-    paddingVertical: 8,
-  },
-  proposalBtnRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 10,
-  },
-  fieldChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.bg,
-  },
-  fieldChipActive: {
+  likeBtnActive: {
     borderColor: COLORS.accent,
     backgroundColor: COLORS.accentLight,
   },
-  fieldChipText: { fontSize: 11, fontWeight: "600", color: COLORS.sub },
-  fieldChipTextActive: { color: COLORS.accent },
+  loadMoreBtn: {
+    marginTop: 8, paddingVertical: 8,
+    borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 8, alignItems: "center",
+  },
+  loadMoreBtnText: { fontSize: 12, fontWeight: "600", color: COLORS.sub },
+
+  emptyText: { fontSize: 13, color: COLORS.subLight, textAlign: "center", paddingVertical: 16 },
+});
+
+// ── 편집 모달 스타일 ──────────────────────────────────────────
+const em = StyleSheet.create({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  sheet: {
+    position: "absolute",
+    bottom: 0, left: 0, right: 0,
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "88%",
+    paddingBottom: 32,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    padding: 20,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  title: { fontSize: 16, fontWeight: "800", color: COLORS.text },
+  subtitle: { fontSize: 12, color: COLORS.sub, marginTop: 3 },
+  closeBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.bg,
+    alignItems: "center", justifyContent: "center",
+    flexShrink: 0,
+  },
+  label: { fontSize: 12, fontWeight: "700", color: COLORS.sub, marginBottom: 6 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 8, borderWidth: 1,
+    borderColor: COLORS.border, backgroundColor: COLORS.bg,
+  },
+  chipActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentLight },
+  chipText: { fontSize: 11, fontWeight: "600", color: COLORS.sub },
+  chipTextActive: { color: COLORS.accent },
+  currentValueBox: {
+    backgroundColor: "#f3f4f6",
+    borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingVertical: 9, paddingHorizontal: 12,
+    minHeight: 38,
+  },
+  input: {
+    borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingVertical: 9, paddingHorizontal: 12,
+    fontSize: 13, color: COLORS.text,
+    backgroundColor: COLORS.bg,
+  },
+  submitBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 12, paddingVertical: 13,
+    alignItems: "center",
+  },
+  submitBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
 });

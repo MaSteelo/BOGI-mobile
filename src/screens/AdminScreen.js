@@ -23,8 +23,8 @@ const STATUS_TABS = [
 ];
 
 const MAIN_TABS = [
-  { key: "edits", label: "게임 편집" },
-  { key: "submissions", label: "새 게임 등록" },
+  { key: "edits", label: "게임 설정 편집" },
+  { key: "submissions", label: "게임 추가" },
   { key: "images", label: "이미지 제안" },
 ];
 

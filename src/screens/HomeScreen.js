@@ -30,7 +30,7 @@ function SectionHeader({ title, sub }) {
   );
 }
 
-function RankedGameCard({ rank, game, session, reviewSummary, gameStat, onReviewSaved, badgeColor }) {
+function RankedGameCard({ rank, game, session, reviewSummary, gameStat, onReviewSaved, badgeColor, onGameAdd }) {
   return (
     <View>
       <GameCard
@@ -40,6 +40,7 @@ function RankedGameCard({ rank, game, session, reviewSummary, gameStat, onReview
         gameStat={gameStat}
         onReviewSaved={onReviewSaved}
         cardWidth={RANK_CARD_W}
+        onGameAdd={onGameAdd}
       />
       <View style={[s.rankBadge, { backgroundColor: badgeColor }]}>
         <Text style={s.rankBadgeText}>#{rank}</Text>
@@ -89,7 +90,7 @@ function SubmitGameModal({ visible, onClose, session }) {
     if (error) {
       Alert.alert("오류", error.message);
     } else {
-      Alert.alert("완료", "게임 제안이 접수되었어요! 관리자 검토 후 등록됩니다. 🎉");
+      Alert.alert("완료", "게임 추가 신청이 접수되었어요! 관리자 검토 후 등록됩니다. 🎉");
       onClose();
     }
   };
@@ -104,7 +105,7 @@ function SubmitGameModal({ visible, onClose, session }) {
       <SafeAreaView style={sg.container}>
         <View style={sg.header}>
           <View style={{ width: 32 }} />
-          <Text style={sg.title}>새 게임 제안</Text>
+          <Text style={sg.title}>게임 추가</Text>
           <TouchableOpacity onPress={onClose} hitSlop={8}>
             <Text style={{ fontSize: 20, color: COLORS.sub }}>✕</Text>
           </TouchableOpacity>
@@ -321,7 +322,7 @@ export default function HomeScreen({ session }) {
       <View style={s.headerRight}>
         {session && (
           <TouchableOpacity onPress={() => setShowSubmitModal(true)} style={s.submitGameBtn}>
-            <Text style={s.submitGameBtnText}>+ 게임 제안</Text>
+            <Text style={s.submitGameBtnText}>+ 게임 추가</Text>
           </TouchableOpacity>
         )}
         {session && <NotificationBell session={session} />}
@@ -349,6 +350,7 @@ export default function HomeScreen({ session }) {
                 gameStat={gameStats[item.id] || null}
                 onReviewSaved={refreshReviewSummary}
                 badgeColor={index < 3 ? RANK_COLORS[index] : "#9ca3af"}
+                onGameAdd={session ? () => setShowSubmitModal(true) : null}
               />
             )}
           />
@@ -377,6 +379,7 @@ export default function HomeScreen({ session }) {
                   gameStat={{ avg: item.avg, count: item.count }}
                   onReviewSaved={refreshReviewSummary}
                   badgeColor={index < 3 ? RANK_COLORS[index] : "#9ca3af"}
+                  onGameAdd={session ? () => setShowSubmitModal(true) : null}
                 />
               )}
             />
@@ -429,7 +432,7 @@ export default function HomeScreen({ session }) {
         numColumns={3}
         keyExtractor={(item) => item.id.toString()}
         ListHeaderComponent={ListHeader}
-        contentContainerStyle={{ paddingHorizontal: PADDING, paddingBottom: insets.bottom + 20 }}
+        contentContainerStyle={{ paddingHorizontal: PADDING, paddingBottom: insets.bottom + 68 }}
         columnWrapperStyle={{ gap: COL_GAP, marginBottom: COL_GAP }}
         ListEmptyComponent={
           <View style={s.center}>
@@ -445,6 +448,7 @@ export default function HomeScreen({ session }) {
             gameStat={gameStats[item.id] || null}
             onReviewSaved={refreshReviewSummary}
             cardWidth={CARD_W}
+            onGameAdd={session ? () => setShowSubmitModal(true) : null}
           />
         )}
       />
