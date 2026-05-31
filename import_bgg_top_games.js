@@ -408,7 +408,7 @@ async function getExistingGames() {
 async function insertGame(g) {
   const row = {
     name_en: g.name_en || null,
-    name_ko: g.name_ko || null,
+    name_ko: g.name_ko || g.name_en || null,
     genre: g.genre?.length ? g.genre : null,
     min_players: g.min_players,
     max_players: g.max_players,
