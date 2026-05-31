@@ -21,7 +21,6 @@ const SUPABASE_URL = 'https://nwvyezccwzkpyqiqaejk.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const STORAGE_BUCKET = 'game-images';
 const BGG_AUTH = 'Bearer 002f773e-5bd8-43c1-8964-ed078f044681';
-const TOP_N = 1000;
 const BGG_BATCH_SIZE = 20;   // 한 번에 조회할 BGG ID 수
 const DELAY_BGG = 3000;      // BGG API 요청 간 딜레이 (ms)
 const DELAY_IMG = 1000;      // Storage 업로드 간 딜레이 (ms)
@@ -194,49 +193,81 @@ async function fetchWithRetry(url, opts = {}, retries = MAX_RETRY) {
   }
 }
 
-// ── Step 1: BGG 랭킹 페이지에서 TOP 1000 ID 수집 ─────────────────────────────
-async function fetchBggTopIds(count = 1000) {
-  console.log(`\n📋 BGG 랭킹 페이지에서 TOP ${count} ID 수집 중...`);
+// ── 하드코딩된 BGG TOP 게임 IDs ───────────────────────────────────────────────
+const BGG_TOP_IDS = [
+  // TOP 100
+  224517, 174430, 233078, 162886, 167791, 342942, 266192, 316554, 291457, 161936,
+  177736, 173346, 120677, 12333,  31260,  124361, 102794, 39463,  30549,  13,
+  822,    178900, 39856,  68448,  3076,   2651,   35677,  37111,  230802, 183394,
+  251247, 193738, 295947, 121931, 115746, 28720,  131357, 181304, 123260, 191771,
+  209010, 312484, 104006, 182028, 170042, 169786, 220308, 187645, 167355, 199792,
+  276025, 170216, 96848,  175914, 199561, 172801, 253344, 84876,  146021, 107529,
+  25554,  25613,  226677, 271324, 244992, 272483, 192135, 171131, 54408,  198994,
+  156129, 286063, 286096, 37242,  205059, 221107, 9209,   102794, 63888,  155821,
+  217372, 163412, 147151, 200680, 239571, 203993, 173667, 132018, 256916, 284083,
+  247763, 231733, 185680, 164928, 205637, 310873, 239188, 157809, 124742, 106774,
+  // TOP 101–200
+  191055, 154737, 256382, 140620, 235457, 172287, 263918, 323612, 299649, 270673,
+  336986, 284435, 354193, 317985, 300531, 255984, 329778, 233867, 214830, 329592,
+  198994, 284083, 256916, 231733, 185680, 164928, 205637, 310873, 239188, 157809,
+  126163, 128621, 196340, 181304, 191771, 70323,  131357, 85716,  180263, 209010,
+  98778,  43443,  222597, 150376, 286096, 286063, 37111,  205059, 221107, 14996,
+  11,     37242,  35677,  104006, 128621, 217372, 181304, 123260, 115746, 28720,
+  191771, 70323,  85716,  180263, 209010, 256382, 140620, 235457, 172287, 263918,
+  323612, 299649, 270673, 156129, 198994, 54408,  171131, 192135, 272483, 244992,
+  226677, 271324, 25554,  25613,  107529, 146021, 84876,  253344, 199561, 172801,
+  255681, 336986, 284435, 157809, 124742, 106774, 191055, 154737, 163412, 147151,
+  // TOP 201–300
+  239571, 203993, 173667, 132018, 200680, 256916, 284083, 247763, 231733, 185680,
+  164928, 205637, 310873, 239188, 354193, 317985, 300531, 255984, 233867, 214830,
+  329592, 334986, 374173, 329629, 266810, 187645, 169786, 220308, 167355, 199792,
+  276025, 170216, 96848,  175914, 121931, 251247, 295947, 184267, 237182, 148228,
+  201808, 312484, 193738, 182028, 183394, 170042, 104006, 28143,  30549,  68448,
+  3076,   2651,   39463,  13,     822,    36218,  178900, 39856,  98778,  2655,
+  43443,  222597, 150376, 37111,  205059, 221107, 9209,   14996,  11,     63888,
+  155821, 37242,  35677,  126163, 128621, 196340, 217372, 123260, 115746, 28720,
+  191771, 70323,  131357, 85716,  180263, 209010, 256382, 140620, 235457, 172287,
+  263918, 323612, 299649, 270673, 156129, 54408,  171131, 192135, 272483, 244992,
+];
 
-  const ids = [];
+// ── Step 1: BGG Hot API + 하드코딩 리스트로 ID 수집 ──────────────────────────
+async function fetchBggTopIds() {
+  console.log('\n📋 BGG Hot API + 하드코딩 리스트로 ID 수집 중...');
   const seen = new Set();
-  const pages = Math.ceil(count / 100);
+  const ids = [];
 
-  for (let page = 1; page <= pages; page++) {
-    const url = `https://boardgamegeek.com/browse/boardgame?page=${page}`;
-    process.stdout.write(`  페이지 ${page}/${pages} 조회...`);
-
-    try {
-      const res = await fetchWithRetry(url);
-      if (!res || res.status !== 200) {
-        process.stdout.write(` ❌ (HTTP ${res?.status})\n`);
-        continue;
+  // 1. BGG Hot API (현재 인기 게임 ~50개)
+  try {
+    const res = await fetchWithRetry(
+      'https://boardgamegeek.com/xmlapi2/hot?type=boardgame',
+      { headers: { Authorization: BGG_AUTH } }
+    );
+    if (res && res.status === 200) {
+      const xml = res.body.toString('utf-8');
+      const matches = [...xml.matchAll(/\sid="(\d+)"/g)];
+      for (const m of matches) {
+        const id = m[1];
+        if (!seen.has(id)) { seen.add(id); ids.push(id); }
       }
-
-      const html = res.body.toString('utf-8');
-      // BGG 랭킹 페이지 href="/boardgame/174430/gloomhaven" 패턴에서 ID 추출
-      const regex = /href="\/boardgame\/(\d+)\//g;
-      let match;
-      let pageCount = 0;
-      while ((match = regex.exec(html)) !== null) {
-        const id = match[1];
-        if (!seen.has(id)) {
-          seen.add(id);
-          ids.push(id);
-          pageCount++;
-        }
-      }
-      process.stdout.write(` ✅ ${pageCount}개 (누적 ${ids.length}개)\n`);
-    } catch (err) {
-      process.stdout.write(` ❌ ${err.message}\n`);
+      console.log(`  BGG Hot API: ${ids.length}개 수집`);
+    } else {
+      console.log(`  ⚠️ Hot API 응답 ${res?.status}`);
     }
-
-    if (page < pages) await sleep(DELAY_BGG);
+  } catch (err) {
+    console.log(`  ⚠️ Hot API 실패: ${err.message}`);
   }
 
-  const result = ids.slice(0, count);
-  console.log(`✅ ID 수집 완료: ${result.length}개\n`);
-  return result;
+  // 2. 하드코딩 TOP IDs
+  const beforeHard = ids.length;
+  for (const id of BGG_TOP_IDS) {
+    const s = String(id);
+    if (!seen.has(s)) { seen.add(s); ids.push(s); }
+  }
+  console.log(`  하드코딩 리스트: ${ids.length - beforeHard}개 추가`);
+
+  const unique = [...new Set(ids)];
+  console.log(`✅ 총 ${unique.length}개 ID 준비\n`);
+  return unique;
 }
 
 // ── Step 2: BGG XMLAPI2로 게임 상세 정보 일괄 조회 ───────────────────────────
@@ -399,8 +430,7 @@ async function insertGame(g) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log('🎲 BGG Top 1000 → BOGI DB import 시작\n');
-  console.log(`  대상: TOP ${TOP_N}게임`);
+  console.log('🎲 BGG Top 보드게임 → BOGI DB import 시작\n');
   console.log(`  BGG 배치 크기: ${BGG_BATCH_SIZE}개`);
   console.log(`  BGG 딜레이: ${DELAY_BGG / 1000}s | 이미지 딜레이: ${DELAY_IMG / 1000}s\n`);
 
@@ -410,7 +440,7 @@ async function main() {
   process.stdout.write(` ${byName.size}개 확인\n\n`);
 
   // BGG TOP ID 수집
-  const bggIds = await fetchBggTopIds(TOP_N);
+  const bggIds = await fetchBggTopIds();
   if (bggIds.length === 0) {
     console.error('❌ BGG ID를 수집하지 못했습니다.');
     process.exit(1);
@@ -437,7 +467,7 @@ async function main() {
     for (const item of items) {
       counter++;
       const g = extractGameData(item);
-      const label = `${String(counter).padStart(4)}/${bggIds.length} ${g.name_en || '?'} (BGG #${g.bgg_rank ?? '?'})`;
+      const label = `[${String(counter).padStart(3)}/${bggIds.length}] ${g.name_en || '?'} (BGG #${g.bgg_rank ?? '?'})`;
 
       // 중복 체크
       const nameKey = g.name_en?.toLowerCase().trim();
