@@ -100,14 +100,12 @@ function EditModal({ game, session, visible, onClose, onSubmitted }) {
   const [newValue, setNewValue] = useState("");
   const [imagePreviewValid, setImagePreviewValid] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (!visible) {
       setSelectedField(EDIT_FIELDS[0]);
       setNewValue("");
       setImagePreviewValid(null);
-      setSaved(false);
       setSaving(false);
     }
   }, [visible]);
@@ -126,6 +124,7 @@ function EditModal({ game, session, visible, onClose, onSubmitted }) {
   };
 
   const handleSubmit = async () => {
+    if (!session) { Alert.alert("알림", "로그인이 필요합니다"); onClose(); return; }
     const val = newValue.trim();
     if (!val) { Alert.alert("알림", "새 값을 입력해주세요"); return; }
     if (selectedField.key === "image_url") {
@@ -155,8 +154,13 @@ function EditModal({ game, session, visible, onClose, onSubmitted }) {
       }));
     }
     setSaving(false);
-    if (error) { Alert.alert("오류", error.message); }
-    else { setSaved(true); onSubmitted?.(); }
+    if (error) {
+      Alert.alert("오류", error.message);
+    } else {
+      Alert.alert("✅ 수정 제안이 등록되었습니다", "관리자 검토 후 반영됩니다");
+      onSubmitted?.();
+      onClose();
+    }
   };
 
   return (
@@ -173,101 +177,90 @@ function EditModal({ game, session, visible, onClose, onSubmitted }) {
           </TouchableOpacity>
         </View>
 
-        {saved ? (
-          <View style={{ padding: 24, alignItems: "center" }}>
-            <Text style={{ fontSize: 14, color: "#22c55e", fontWeight: "700", textAlign: "center", lineHeight: 22 }}>
-              ✅ 수정 제안이 등록되었습니다.{"\n"}관리자 검토 후 반영됩니다.
-            </Text>
-            <TouchableOpacity onPress={onClose} style={[em.submitBtn, { marginTop: 16, width: "100%" }]}>
-              <Text style={em.submitBtnText}>닫기</Text>
-            </TouchableOpacity>
+        <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+          <Text style={em.label}>수정할 항목</Text>
+          <View style={em.chipRow}>
+            {EDIT_FIELDS.map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                onPress={() => handleFieldSelect(f)}
+                style={[em.chip, selectedField.key === f.key && em.chipActive]}
+              >
+                <Text style={[em.chipText, selectedField.key === f.key && em.chipTextActive]}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        ) : (
-          <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
-            <Text style={em.label}>수정할 항목</Text>
-            <View style={em.chipRow}>
-              {EDIT_FIELDS.map((f) => (
-                <TouchableOpacity
-                  key={f.key}
-                  onPress={() => handleFieldSelect(f)}
-                  style={[em.chip, selectedField.key === f.key && em.chipActive]}
-                >
-                  <Text style={[em.chipText, selectedField.key === f.key && em.chipTextActive]}>
-                    {f.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
 
-            <Text style={[em.label, { marginTop: 14 }]}>현재 값</Text>
-            <View style={em.currentValueBox}>
-              <Text style={{ fontSize: 13, color: currentDisplay() ? COLORS.text : COLORS.subLight }}>
-                {currentDisplay() || "값 없음"}
-              </Text>
-            </View>
+          <Text style={[em.label, { marginTop: 14 }]}>현재 값</Text>
+          <View style={em.currentValueBox}>
+            <Text style={{ fontSize: 13, color: currentDisplay() ? COLORS.text : COLORS.subLight }}>
+              {currentDisplay() || "값 없음"}
+            </Text>
+          </View>
 
-            <Text style={[em.label, { marginTop: 14 }]}>새 값</Text>
-            {selectedField.type === "textarea" ? (
-              <TextInput
-                value={newValue}
-                onChangeText={setNewValue}
-                placeholder="새 값을 입력하세요"
-                placeholderTextColor={COLORS.subLight}
-                style={[em.input, { minHeight: 80, textAlignVertical: "top" }]}
-                multiline
-              />
-            ) : (
-              <TextInput
-                value={newValue}
-                onChangeText={(t) => { setNewValue(t); if (selectedField.key === "image_url") setImagePreviewValid(null); }}
-                placeholder={
-                  selectedField.key === "image_url" ? "https://..." :
-                  selectedField.key === "genre" ? "예: 전략, 협력" :
-                  "새 값을 입력하세요"
-                }
-                placeholderTextColor={COLORS.subLight}
-                style={em.input}
-                keyboardType={selectedField.type === "number" ? "numeric" : "default"}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            )}
-
-            {selectedField.key === "image_url" && newValue.startsWith("https://") && (
-              <View style={{ marginTop: 10, alignItems: "center" }}>
-                <Text style={[em.label, { alignSelf: "flex-start" }]}>미리보기</Text>
-                <Image
-                  source={{ uri: newValue }}
-                  style={{ width: 120, height: 120, borderRadius: 10, backgroundColor: "#e5e7eb" }}
-                  resizeMode="contain"
-                  onLoad={() => setImagePreviewValid(true)}
-                  onError={() => setImagePreviewValid(false)}
-                />
-                {imagePreviewValid === true && (
-                  <Text style={{ fontSize: 12, color: "#22c55e", marginTop: 4, fontWeight: "600" }}>✓ 이미지 확인됨</Text>
-                )}
-                {imagePreviewValid === false && (
-                  <Text style={{ fontSize: 12, color: COLORS.error, marginTop: 4 }}>이미지를 불러올 수 없어요</Text>
-                )}
-              </View>
-            )}
-
-            <TouchableOpacity
-              onPress={handleSubmit}
-              disabled={saving || !newValue.trim() || (selectedField.key === "image_url" && !imagePreviewValid)}
-              style={[
-                em.submitBtn,
-                { marginTop: 20 },
-                (saving || !newValue.trim() || (selectedField.key === "image_url" && !imagePreviewValid)) && { opacity: 0.5 },
-              ]}
-            >
-              {saving
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <Text style={em.submitBtnText}>제안 제출</Text>
+          <Text style={[em.label, { marginTop: 14 }]}>새 값</Text>
+          {selectedField.type === "textarea" ? (
+            <TextInput
+              value={newValue}
+              onChangeText={setNewValue}
+              placeholder="새 값을 입력하세요"
+              placeholderTextColor={COLORS.subLight}
+              style={[em.input, { minHeight: 80, textAlignVertical: "top" }]}
+              multiline
+            />
+          ) : (
+            <TextInput
+              value={newValue}
+              onChangeText={(t) => { setNewValue(t); if (selectedField.key === "image_url") setImagePreviewValid(null); }}
+              placeholder={
+                selectedField.key === "image_url" ? "https://..." :
+                selectedField.key === "genre" ? "예: 전략, 협력" :
+                "새 값을 입력하세요"
               }
-            </TouchableOpacity>
-          </ScrollView>
-        )}
+              placeholderTextColor={COLORS.subLight}
+              style={em.input}
+              keyboardType={selectedField.type === "number" ? "numeric" : "default"}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          )}
+
+          {selectedField.key === "image_url" && newValue.startsWith("https://") && (
+            <View style={{ marginTop: 10, alignItems: "center" }}>
+              <Text style={[em.label, { alignSelf: "flex-start" }]}>미리보기</Text>
+              <Image
+                source={{ uri: newValue }}
+                style={{ width: 120, height: 120, borderRadius: 10, backgroundColor: "#e5e7eb" }}
+                resizeMode="contain"
+                onLoad={() => setImagePreviewValid(true)}
+                onError={() => setImagePreviewValid(false)}
+              />
+              {imagePreviewValid === true && (
+                <Text style={{ fontSize: 12, color: "#22c55e", marginTop: 4, fontWeight: "600" }}>✓ 이미지 확인됨</Text>
+              )}
+              {imagePreviewValid === false && (
+                <Text style={{ fontSize: 12, color: COLORS.error, marginTop: 4 }}>이미지를 불러올 수 없어요</Text>
+              )}
+            </View>
+          )}
+
+          <TouchableOpacity
+            onPress={handleSubmit}
+            disabled={saving || !newValue.trim() || (selectedField.key === "image_url" && !imagePreviewValid)}
+            style={[
+              em.submitBtn,
+              { marginTop: 20 },
+              (saving || !newValue.trim() || (selectedField.key === "image_url" && !imagePreviewValid)) && { opacity: 0.5 },
+            ]}
+          >
+            {saving
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={em.submitBtnText}>제안 제출</Text>
+            }
+          </TouchableOpacity>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -281,6 +274,13 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
   const [expanded, setExpanded] = useState(false);
   const flipAnim = useRef(new Animated.Value(0)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.2)).current;
+
+  const cardOpacity = scaleAnim.interpolate({
+    inputRange: [0.2, 0.6],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
 
   const [myReviews, setMyReviews] = useState(null);
   const [allReviews, setAllReviews] = useState(null);
@@ -375,24 +375,28 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
 
   const openCard = () => {
     setExpanded(true);
+    scaleAnim.setValue(0.2);
     flipAnim.setValue(0);
     overlayAnim.setValue(0);
     loadMyReviews();
     loadAllReviews();
     requestAnimationFrame(() => {
       Animated.parallel([
-        Animated.timing(overlayAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-        Animated.timing(flipAnim, { toValue: 180, duration: 600, easing: Easing.ease, useNativeDriver: true }),
+        Animated.timing(overlayAnim, { toValue: 1, duration: 300, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 1, duration: 600, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(flipAnim, { toValue: 180, duration: 600, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
       ]).start();
     });
   };
 
   const closeCard = () => {
     Animated.parallel([
-      Animated.timing(overlayAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
-      Animated.timing(flipAnim, { toValue: 0, duration: 500, easing: Easing.ease, useNativeDriver: true }),
+      Animated.timing(overlayAnim, { toValue: 0, duration: 300, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.2, duration: 400, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(flipAnim, { toValue: 0, duration: 400, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
     ]).start(() => {
       setExpanded(false);
+      scaleAnim.setValue(0.2);
       setMyReviews(null);
       setAllReviews(null);
       setAllReviewsLoading(false);
@@ -492,291 +496,307 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
         </Animated.View>
 
         <View style={s.modalWrapper} pointerEvents="box-none">
-          {/* 앞면 */}
-          <Animated.View style={[s.face, {
-            transform: [{ perspective: 1000 }, { rotateY: frontRotateY }],
-            opacity: frontOpacity,
-            backfaceVisibility: "hidden",
-            backgroundColor: genreStyle.grad[0],
-          }]}>
-            {!imgError && imageUrl ? (
-              <Image source={{ uri: imageUrl }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-            ) : (
-              <Text style={{ fontSize: 100 }}>{genreStyle.emoji}</Text>
-            )}
-          </Animated.View>
+          <Animated.View style={[
+            StyleSheet.absoluteFillObject,
+            { transform: [{ scale: scaleAnim }], opacity: cardOpacity },
+          ]}>
+            {/* 앞면 */}
+            <Animated.View style={[s.face, {
+              transform: [{ perspective: 1000 }, { rotateY: frontRotateY }],
+              opacity: frontOpacity,
+              backfaceVisibility: "hidden",
+              backgroundColor: genreStyle.grad[0],
+            }]}>
+              {!imgError && imageUrl ? (
+                <Image source={{ uri: imageUrl }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+              ) : (
+                <Text style={{ fontSize: 100 }}>{genreStyle.emoji}</Text>
+              )}
+            </Animated.View>
 
-          {/* 뒷면 */}
-          <Animated.View style={[s.face, {
-            transform: [{ perspective: 1000 }, { rotateY: backRotateY }],
-            opacity: backOpacity,
-            backfaceVisibility: "hidden",
-            backgroundColor: COLORS.surface,
-          }]}>
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
-              keyboardShouldPersistTaps="handled"
-            >
-              {/* 1. 헤더: 썸네일 + 게임 이름(한/영) + X */}
-              <View style={s.backHeader}>
-                <View style={[s.headerThumb, { backgroundColor: genreStyle.grad[0] }]}>
+            {/* 뒷면 */}
+            <Animated.View style={[s.face, {
+              transform: [{ perspective: 1000 }, { rotateY: backRotateY }],
+              opacity: backOpacity,
+              backfaceVisibility: "hidden",
+              backgroundColor: COLORS.surface,
+              alignItems: "stretch",
+              justifyContent: "flex-start",
+            }]}>
+              {/* 상단 밴드 — 120px, 장르 그라디언트 + 이미지 + 게임명 */}
+              <View style={[s.backTopBand, { backgroundColor: genreStyle.grad[0] }]}>
+                <View style={[s.backTopThumb, { backgroundColor: genreStyle.grad[1] }]}>
                   {!imgError && imageUrl ? (
                     <Image source={{ uri: imageUrl }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
                   ) : (
-                    <Text style={{ fontSize: 24 }}>{genreStyle.emoji}</Text>
+                    <Text style={{ fontSize: 36 }}>{genreStyle.emoji}</Text>
                   )}
                 </View>
-                <View style={{ flex: 1, marginHorizontal: 12 }}>
-                  <Text style={s.backTitle} numberOfLines={2}>{game.name_ko || game.name_en}</Text>
+                <View style={s.backTopInfo}>
+                  <Text style={s.backTopName} numberOfLines={2}>{game.name_ko || game.name_en}</Text>
                   {game.name_en && game.name_ko && game.name_ko !== game.name_en && (
-                    <Text style={s.backTitleEn} numberOfLines={1}>{game.name_en}</Text>
+                    <Text style={s.backTopNameEn} numberOfLines={1}>{game.name_en}</Text>
                   )}
                 </View>
-                <TouchableOpacity onPress={closeCard} style={s.closeBtn}>
-                  <Text style={{ color: COLORS.sub, fontSize: 16 }}>✕</Text>
-                </TouchableOpacity>
               </View>
 
-              {/* 2. 내 기록 섹션 */}
-              {session && (
-                <View style={s.sectionBox}>
-                  <View style={s.sectionHeaderRow}>
-                    <Text style={s.sectionTitle}>내 기록</Text>
-                  </View>
-
-                  {loadingReviews ? (
-                    <ActivityIndicator size="small" color={COLORS.accent} />
-                  ) : (
-                    <>
-                      {myReviews?.map((r) => {
-                        if (confirmDeleteId === r.id) {
-                          return (
-                            <View key={r.id} style={s.deleteConfirmBox}>
-                              <Text style={s.deleteConfirmText}>정말 삭제할까요?{"\n"}되돌릴 수 없어요.</Text>
-                              <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-                                <TouchableOpacity onPress={() => setConfirmDeleteId(null)} style={s.deleteCancelBtn}>
-                                  <Text style={{ color: COLORS.sub, fontWeight: "700", fontSize: 12 }}>취소</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleDelete(r.id)} style={s.deleteBtn}>
-                                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>삭제</Text>
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          );
-                        }
-                        return (
-                          <View key={r.id} style={[s.myReviewItem, editingId === r.id && s.myReviewItemEditing]}>
-                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                              <Text style={{ fontSize: 11, color: COLORS.sub }}>{r.created_at?.slice(0, 10)}</Text>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                <Text style={{ color: COLORS.accent, fontWeight: "700", fontSize: 11 }}>★ {Number(r.total_score).toFixed(1)}</Text>
-                                <TouchableOpacity
-                                  onPress={() => { setEditingId(r.id); setTotalScore(r.total_score || 0); setMemo(r.memo || ""); setShowForm(true); }}
-                                  hitSlop={6}
-                                >
-                                  <Text style={{ fontSize: 13 }}>✏️</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => setConfirmDeleteId(r.id)} hitSlop={6}>
-                                  <Text style={{ fontSize: 13 }}>🗑️</Text>
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                            {r.memo ? <Text style={s.reviewMemo}>{r.memo}</Text> : null}
-                          </View>
-                        );
-                      })}
-
-                      {/* 3. 새 기록 추가 버튼 (기존 기록이 있고 폼이 닫혀있을 때) */}
-                      {!showForm && myReviews?.length > 0 && (
-                        <TouchableOpacity
-                          style={s.addRecordBtn}
-                          onPress={() => { setEditingId(null); setTotalScore(0); setMemo(""); setShowForm(true); }}
-                        >
-                          <Text style={s.addRecordBtnText}>+ 새 기록 추가</Text>
-                        </TouchableOpacity>
-                      )}
-
-                      {/* 기록 작성 폼 */}
-                      {showForm && (
-                        <View style={s.writeFormBox}>
-                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                            <Text style={{ fontSize: 13, fontWeight: "800", color: COLORS.text }}>
-                              {editingId ? "기록 수정하기" : "새 기록 추가"}
-                            </Text>
-                            <TouchableOpacity onPress={() => { setShowForm(false); setEditingId(null); setTotalScore(0); setMemo(""); }}>
-                              <Text style={s.cancelBtnText}>취소</Text>
-                            </TouchableOpacity>
-                          </View>
-                          <View style={s.starBox}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
-                              <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.sub }}>⭐ 총점</Text>
-                              <View style={{ backgroundColor: COLORS.accentLight, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
-                                <Text style={{ fontSize: 10, color: COLORS.accent, fontWeight: "700" }}>필수</Text>
-                              </View>
-                            </View>
-                            <StarInput value={totalScore} onChange={setTotalScore} />
-                            <Text style={[s.scoreDisplay, { color: totalScore > 0 ? COLORS.accent : COLORS.subLight }]}>
-                              {totalScore > 0 ? `${totalScore}.0 / 5` : "별을 선택해주세요"}
-                            </Text>
-                          </View>
-                          <TextInput
-                            value={memo}
-                            onChangeText={setMemo}
-                            placeholder="후기, 전략, 감상을 자유롭게 기록해요"
-                            placeholderTextColor={COLORS.subLight}
-                            style={s.memoInput}
-                            multiline
-                          />
-                          <TouchableOpacity
-                            onPress={handleSave}
-                            disabled={saving || totalScore === 0}
-                            style={[s.saveBtn, (saving || totalScore === 0) && { opacity: 0.45 }]}
-                          >
-                            {saving
-                              ? <ActivityIndicator size="small" color="#fff" />
-                              : <Text style={s.saveBtnText}>{editingId ? "수정하기" : "기록 저장하기"}</Text>
-                            }
-                          </TouchableOpacity>
-                        </View>
-                      )}
-
-                      {!showForm && (!myReviews || myReviews.length === 0) && (
-                        <TouchableOpacity style={s.firstRecordBtn} onPress={() => setShowForm(true)}>
-                          <Text style={s.firstRecordBtnText}>⭐ 이 게임의 첫 기록을 남겨보세요!</Text>
-                        </TouchableOpacity>
-                      )}
-                    </>
-                  )}
+              {/* 하단 스크롤 영역 */}
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={s.backScrollContent}
+                keyboardShouldPersistTaps="handled"
+              >
+                {/* 헤더: 게임명 + X */}
+                <View style={s.backContentHeader}>
+                  <Text style={s.backContentTitle} numberOfLines={1}>{game.name_ko || game.name_en}</Text>
+                  <TouchableOpacity onPress={closeCard} style={s.closeBtn}>
+                    <Text style={{ color: COLORS.sub, fontSize: 16 }}>✕</Text>
+                  </TouchableOpacity>
                 </View>
-              )}
 
-              {/* 4. 게임 정보 섹션 */}
-              <View style={s.gameInfoSection}>
-                {game.genre?.length > 0 && (
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
-                    {game.genre.map((g) => (
-                      <View key={g} style={s.genreChip}>
-                        <Text style={s.genreChipText}>{g}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 6 }}>
-                  {game.min_players != null && (
-                    <Text style={s.metaText}>👥 {game.min_players}~{game.max_players}인</Text>
-                  )}
-                  {game.play_minutes != null && (
-                    <Text style={s.metaText}>⏱ {game.play_minutes}분</Text>
-                  )}
-                  {game.min_age != null && (
-                    <Text style={s.metaText}>🔞 {game.min_age}세+</Text>
-                  )}
-                  {game.publisher && (
-                    <Text style={s.metaText}>🏢 {game.publisher}</Text>
-                  )}
-                </View>
-                {game.bgg_rank != null && (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <View style={s.bggBadge}>
-                      <Text style={s.bggBadgeText}>BGG #{game.bgg_rank}</Text>
-                    </View>
-                    {gameStat && (
-                      <Text style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700" }}>
-                        ★ {gameStat.avg.toFixed(1)}
-                      </Text>
-                    )}
-                  </View>
-                )}
-                {gameStat && game.bgg_rank == null && (
-                  <View style={s.communityRatingRow}>
-                    <Text style={s.communityRatingText}>★ {gameStat.avg.toFixed(1)}</Text>
-                    <Text style={s.communityRatingCount}> · {gameStat.count}명 평가</Text>
-                  </View>
-                )}
-                {game.description ? (
-                  <Text style={s.descText} numberOfLines={4}>{game.description}</Text>
-                ) : null}
-              </View>
-
-              {/* 5. 게임 설정 편집 버튼 */}
-              {session && (
-                <TouchableOpacity style={s.editGameBtn} onPress={() => setShowEditModal(true)}>
-                  <Text style={s.editGameBtnText}>✏️ 게임 설정 편집</Text>
-                </TouchableOpacity>
-              )}
-
-              {/* 6. 다른 사람 리뷰 */}
-              {(() => {
-                if (allReviews === null) return null;
-                const scores = allReviews.filter((r) => r.total_score > 0).map((r) => r.total_score);
-                const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-                const others = session ? allReviews.filter((r) => r.user_id !== session.user.id) : allReviews;
-                const visible = others.slice(0, reviewsShowCount);
-                return (
-                  <View style={[s.sectionBox, { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 16, marginTop: 4 }]}>
+                {/* 내 기록 섹션 */}
+                {session && (
+                  <View style={s.sectionBox}>
                     <View style={s.sectionHeaderRow}>
-                      <Text style={s.sectionTitle}>다른 사람 리뷰</Text>
-                      {avg !== null && (
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                          <Text style={{ color: COLORS.accent, fontWeight: "700", fontSize: 12 }}>★ {avg.toFixed(1)}</Text>
-                          <Text style={{ color: COLORS.subLight, fontSize: 11 }}>· {allReviews.length}개</Text>
-                        </View>
-                      )}
+                      <Text style={s.sectionTitle}>내 기록</Text>
                     </View>
-                    {allReviewsLoading ? (
+
+                    {loadingReviews ? (
                       <ActivityIndicator size="small" color={COLORS.accent} />
-                    ) : others.length === 0 ? (
-                      <Text style={s.emptyText}>다른 사람의 리뷰가 아직 없어요</Text>
                     ) : (
                       <>
-                        {visible.map((r) => (
-                          <View key={r.id} style={s.reviewItem}>
-                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 4 }}>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                <Text style={s.reviewNick}>{r.nickname}</Text>
-                                {r.total_score > 0 && (
-                                  <Text style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700" }}>★ {Number(r.total_score).toFixed(1)}</Text>
-                                )}
+                        {myReviews?.map((r) => {
+                          if (confirmDeleteId === r.id) {
+                            return (
+                              <View key={r.id} style={s.deleteConfirmBox}>
+                                <Text style={s.deleteConfirmText}>정말 삭제할까요?{"\n"}되돌릴 수 없어요.</Text>
+                                <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+                                  <TouchableOpacity onPress={() => setConfirmDeleteId(null)} style={s.deleteCancelBtn}>
+                                    <Text style={{ color: COLORS.sub, fontWeight: "700", fontSize: 12 }}>취소</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={() => handleDelete(r.id)} style={s.deleteBtn}>
+                                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>삭제</Text>
+                                  </TouchableOpacity>
+                                </View>
                               </View>
-                              <Text style={{ fontSize: 11, color: COLORS.subLight }}>{r.created_at?.slice(0, 10)}</Text>
+                            );
+                          }
+                          return (
+                            <View key={r.id} style={[s.myReviewItem, editingId === r.id && s.myReviewItemEditing]}>
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                <Text style={{ fontSize: 11, color: COLORS.sub }}>{r.created_at?.slice(0, 10)}</Text>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                  <Text style={{ color: COLORS.accent, fontWeight: "700", fontSize: 11 }}>★ {Number(r.total_score).toFixed(1)}</Text>
+                                  <TouchableOpacity
+                                    onPress={() => { setEditingId(r.id); setTotalScore(r.total_score || 0); setMemo(r.memo || ""); setShowForm(true); }}
+                                    hitSlop={6}
+                                  >
+                                    <Text style={{ fontSize: 13 }}>✏️</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={() => setConfirmDeleteId(r.id)} hitSlop={6}>
+                                    <Text style={{ fontSize: 13 }}>🗑️</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                              {r.memo ? <Text style={s.reviewMemo}>{r.memo}</Text> : null}
                             </View>
-                            {r.memo ? <Text style={s.reviewMemoText}>{r.memo}</Text> : null}
-                            {r.user_id !== session?.user.id && (
-                              <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 6 }}>
-                                <TouchableOpacity
-                                  onPress={() => toggleLike(r.id)}
-                                  style={[s.likeBtn, likesMap[r.id]?.likedByMe && s.likeBtnActive]}
-                                >
-                                  <Text style={{ fontSize: 14, color: likesMap[r.id]?.likedByMe ? COLORS.accent : COLORS.subLight }}>
-                                    {likesMap[r.id]?.likedByMe ? "♥" : "♡"}
-                                  </Text>
-                                  {(likesMap[r.id]?.count || 0) > 0 && (
-                                    <Text style={{ fontSize: 12, fontWeight: "600", color: likesMap[r.id]?.likedByMe ? COLORS.accent : COLORS.subLight }}>
-                                      {likesMap[r.id].count}
-                                    </Text>
-                                  )}
-                                </TouchableOpacity>
+                          );
+                        })}
+
+                        {/* 새 기록 추가 버튼 (기존 기록이 있고 폼이 닫혀있을 때) */}
+                        {!showForm && myReviews?.length > 0 && (
+                          <TouchableOpacity
+                            style={s.addRecordBtn}
+                            onPress={() => { setEditingId(null); setTotalScore(0); setMemo(""); setShowForm(true); }}
+                          >
+                            <Text style={s.addRecordBtnText}>+ 새 기록 추가</Text>
+                          </TouchableOpacity>
+                        )}
+
+                        {/* 기록 작성 폼 */}
+                        {showForm && (
+                          <View style={s.writeFormBox}>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                              <Text style={{ fontSize: 13, fontWeight: "800", color: COLORS.text }}>
+                                {editingId ? "기록 수정하기" : "새 기록 추가"}
+                              </Text>
+                              <TouchableOpacity onPress={() => { setShowForm(false); setEditingId(null); setTotalScore(0); setMemo(""); }}>
+                                <Text style={s.cancelBtnText}>취소</Text>
+                              </TouchableOpacity>
+                            </View>
+                            <View style={s.starBox}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                                <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.sub }}>⭐ 총점</Text>
+                                <View style={{ backgroundColor: COLORS.accentLight, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
+                                  <Text style={{ fontSize: 10, color: COLORS.accent, fontWeight: "700" }}>필수</Text>
+                                </View>
                               </View>
-                            )}
+                              <StarInput value={totalScore} onChange={setTotalScore} />
+                              <Text style={[s.scoreDisplay, { color: totalScore > 0 ? COLORS.accent : COLORS.subLight }]}>
+                                {totalScore > 0 ? `${totalScore}.0 / 5` : "별을 선택해주세요"}
+                              </Text>
+                            </View>
+                            <TextInput
+                              value={memo}
+                              onChangeText={setMemo}
+                              placeholder="후기, 전략, 감상을 자유롭게 기록해요"
+                              placeholderTextColor={COLORS.subLight}
+                              style={s.memoInput}
+                              multiline
+                            />
+                            <TouchableOpacity
+                              onPress={handleSave}
+                              disabled={saving || totalScore === 0}
+                              style={[s.saveBtn, (saving || totalScore === 0) && { opacity: 0.45 }]}
+                            >
+                              {saving
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Text style={s.saveBtnText}>{editingId ? "수정하기" : "기록 저장하기"}</Text>
+                              }
+                            </TouchableOpacity>
                           </View>
-                        ))}
-                        {others.length > reviewsShowCount && (
-                          <TouchableOpacity style={s.loadMoreBtn} onPress={() => setReviewsShowCount((n) => n + 10)}>
-                            <Text style={s.loadMoreBtnText}>더 보기 (+{others.length - reviewsShowCount}개)</Text>
+                        )}
+
+                        {!showForm && (!myReviews || myReviews.length === 0) && (
+                          <TouchableOpacity style={s.firstRecordBtn} onPress={() => setShowForm(true)}>
+                            <Text style={s.firstRecordBtnText}>⭐ 이 게임의 첫 기록을 남겨보세요!</Text>
                           </TouchableOpacity>
                         )}
                       </>
                     )}
                   </View>
-                );
-              })()}
-            </ScrollView>
+                )}
+
+                {/* 게임 정보 섹션 */}
+                <View style={s.gameInfoSection}>
+                  {game.genre?.length > 0 && (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+                      {game.genre.map((g) => (
+                        <View key={g} style={s.genreChip}>
+                          <Text style={s.genreChipText}>{g}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 6 }}>
+                    {game.min_players != null && (
+                      <Text style={s.metaText}>👥 {game.min_players}~{game.max_players}인</Text>
+                    )}
+                    {game.play_minutes != null && (
+                      <Text style={s.metaText}>⏱ {game.play_minutes}분</Text>
+                    )}
+                    {game.min_age != null && (
+                      <Text style={s.metaText}>🔞 {game.min_age}세+</Text>
+                    )}
+                    {game.publisher && (
+                      <Text style={s.metaText}>🏢 {game.publisher}</Text>
+                    )}
+                  </View>
+                  {game.bgg_rank != null && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <View style={s.bggBadge}>
+                        <Text style={s.bggBadgeText}>BGG #{game.bgg_rank}</Text>
+                      </View>
+                      {gameStat && (
+                        <Text style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700" }}>
+                          ★ {gameStat.avg.toFixed(1)}
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                  {gameStat && game.bgg_rank == null && (
+                    <View style={s.communityRatingRow}>
+                      <Text style={s.communityRatingText}>★ {gameStat.avg.toFixed(1)}</Text>
+                      <Text style={s.communityRatingCount}> · {gameStat.count}명 평가</Text>
+                    </View>
+                  )}
+                  {game.description ? (
+                    <Text style={s.descText} numberOfLines={4}>{game.description}</Text>
+                  ) : null}
+                </View>
+
+                {/* 게임 설정 편집 버튼 */}
+                {session && (
+                  <TouchableOpacity style={s.editGameBtn} onPress={() => setShowEditModal(true)}>
+                    <Text style={s.editGameBtnText}>✏️ 게임 설정 편집</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* 구분선 */}
+                <View style={s.divider} />
+
+                {/* 다른 사람 리뷰 */}
+                {(() => {
+                  if (allReviews === null) return null;
+                  const scores = allReviews.filter((r) => r.total_score > 0).map((r) => r.total_score);
+                  const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+                  const others = session ? allReviews.filter((r) => r.user_id !== session.user.id) : allReviews;
+                  const visibleReviews = others.slice(0, reviewsShowCount);
+                  return (
+                    <View style={s.sectionBox}>
+                      <View style={s.sectionHeaderRow}>
+                        <Text style={s.sectionTitle}>다른 사람 리뷰</Text>
+                        {avg !== null && (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            <Text style={{ color: COLORS.accent, fontWeight: "700", fontSize: 12 }}>★ {avg.toFixed(1)}</Text>
+                            <Text style={{ color: COLORS.subLight, fontSize: 11 }}>· {allReviews.length}개</Text>
+                          </View>
+                        )}
+                      </View>
+                      {allReviewsLoading ? (
+                        <ActivityIndicator size="small" color={COLORS.accent} />
+                      ) : others.length === 0 ? (
+                        <Text style={s.emptyText}>다른 사람의 리뷰가 아직 없어요</Text>
+                      ) : (
+                        <>
+                          {visibleReviews.map((r) => (
+                            <View key={r.id} style={s.reviewItem}>
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 4 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                  <Text style={s.reviewNick}>{r.nickname}</Text>
+                                  {r.total_score > 0 && (
+                                    <Text style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700" }}>★ {Number(r.total_score).toFixed(1)}</Text>
+                                  )}
+                                </View>
+                                <Text style={{ fontSize: 11, color: COLORS.subLight }}>{r.created_at?.slice(0, 10)}</Text>
+                              </View>
+                              {r.memo ? <Text style={s.reviewMemoText}>{r.memo}</Text> : null}
+                              {r.user_id !== session?.user.id && (
+                                <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 6 }}>
+                                  <TouchableOpacity
+                                    onPress={() => toggleLike(r.id)}
+                                    style={[s.likeBtn, likesMap[r.id]?.likedByMe && s.likeBtnActive]}
+                                  >
+                                    <Text style={{ fontSize: 14, color: likesMap[r.id]?.likedByMe ? COLORS.accent : COLORS.subLight }}>
+                                      {likesMap[r.id]?.likedByMe ? "♥" : "♡"}
+                                    </Text>
+                                    {(likesMap[r.id]?.count || 0) > 0 && (
+                                      <Text style={{ fontSize: 12, fontWeight: "600", color: likesMap[r.id]?.likedByMe ? COLORS.accent : COLORS.subLight }}>
+                                        {likesMap[r.id].count}
+                                      </Text>
+                                    )}
+                                  </TouchableOpacity>
+                                </View>
+                              )}
+                            </View>
+                          ))}
+                          {others.length > reviewsShowCount && (
+                            <TouchableOpacity style={s.loadMoreBtn} onPress={() => setReviewsShowCount((n) => n + 10)}>
+                              <Text style={s.loadMoreBtnText}>더 보기 (+{others.length - reviewsShowCount}개)</Text>
+                            </TouchableOpacity>
+                          )}
+                        </>
+                      )}
+                    </View>
+                  );
+                })()}
+              </ScrollView>
+            </Animated.View>
           </Animated.View>
         </View>
       </Modal>
 
-      {/* 게임 설정 편집 모달 — visible prop으로 제어 */}
+      {/* 게임 설정 편집 모달 */}
       {session && (
         <EditModal
           game={game}
@@ -833,10 +853,10 @@ const s = StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)" },
   modalWrapper: {
     position: "absolute",
-    top: SH * 0.05,
-    left: SW * 0.04,
-    right: SW * 0.04,
-    height: SH * 0.88,
+    top: SH * 0.04,
+    left: SW * 0.025,
+    right: SW * 0.025,
+    height: SH * 0.92,
   },
   face: {
     position: "absolute",
@@ -847,30 +867,58 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // 뒷면 헤더 (썸네일 + 이름 + X)
-  backHeader: {
+  // 뒷면 상단 밴드
+  backTopBand: {
+    height: 120,
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    paddingHorizontal: 20,
+    flexShrink: 0,
   },
-  headerThumb: {
-    width: 56, height: 56,
+  backTopThumb: {
+    width: 64,
+    height: 64,
     borderRadius: 10,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
-  backTitle: {
-    fontSize: 16,
+  backTopInfo: {
+    flex: 1,
+    marginLeft: 14,
+    minWidth: 0,
+  },
+  backTopName: {
+    fontSize: 15,
     fontWeight: "800",
     color: COLORS.text,
-    lineHeight: 22,
+    lineHeight: 20,
   },
-  backTitleEn: {
+  backTopNameEn: {
     fontSize: 11,
     color: COLORS.subLight,
     marginTop: 2,
+  },
+
+  // 뒷면 스크롤 영역
+  backScrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 40,
+  },
+  backContentHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  backContentTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.text,
+    flex: 1,
+    marginRight: 8,
   },
   closeBtn: {
     width: 32, height: 32, borderRadius: 8,
@@ -878,6 +926,13 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.bg,
     alignItems: "center", justifyContent: "center",
     flexShrink: 0,
+  },
+
+  // 구분선
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 8,
   },
 
   // 게임 정보 섹션
@@ -913,7 +968,7 @@ const s = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 4,
     backgroundColor: COLORS.surface,
   },
   editGameBtnText: { fontSize: 12, fontWeight: "700", color: COLORS.sub },

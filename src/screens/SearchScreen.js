@@ -14,6 +14,10 @@ import {
   ScrollView,
   StyleSheet,
   Dimensions,
+  Keyboard,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "../constants/colors";
@@ -37,8 +41,6 @@ const SORT_OPTIONS = [
 ];
 
 export default function SearchScreen({ session }) {
-  console.log("[SearchScreen] session:", session?.user?.email);
-
   const insets = useSafeAreaInsets();
   const inputRef = useRef(null);
   const [query, setQuery] = useState("");
@@ -49,15 +51,11 @@ export default function SearchScreen({ session }) {
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [sortBy, setSortBy] = useState("name");
 
-  // auto focus
+  // debounce 검색 — 입력 완료 후 결과 표시
   useEffect(() => {
-    const timer = setTimeout(() => inputRef.current?.focus(), 300);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // debounce
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300);
     return () => clearTimeout(timer);
   }, [query]);
 
@@ -78,10 +76,7 @@ export default function SearchScreen({ session }) {
           .not("total_score", "is", null),
       ]);
 
-      if (gamesRes.error) {
-        console.warn("[SearchScreen] games 오류:", gamesRes.error.message);
-      } else {
-        console.log("[SearchScreen] games:", gamesRes.data?.length);
+      if (!gamesRes.error) {
         setGames(gamesRes.data ?? []);
       }
 
@@ -158,6 +153,7 @@ export default function SearchScreen({ session }) {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.filterRow}
+        keyboardShouldPersistTaps="handled"
       >
         {selectedGenres.length > 0 && (
           <TouchableOpacity
@@ -221,44 +217,54 @@ export default function SearchScreen({ session }) {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.searchBar}>
-        <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          ref={inputRef}
-          style={styles.input}
-          placeholder="게임 이름으로 검색..."
-          placeholderTextColor={COLORS.subLight}
-          value={query}
-          onChangeText={setQuery}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-      </View>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={0}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View style={[styles.container, { paddingTop: insets.top }]}>
+          <View style={styles.searchBar}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              ref={inputRef}
+              style={styles.input}
+              placeholder="게임 이름으로 검색..."
+              placeholderTextColor={COLORS.subLight}
+              value={query}
+              onChangeText={setQuery}
+              returnKeyType="search"
+              onSubmitEditing={Keyboard.dismiss}
+              clearButtonMode="while-editing"
+            />
+          </View>
 
-      {loading ? (
-        <View style={styles.center}>
-          <Text style={styles.loadingText}>게임 목록 불러오는 중...</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredGames}
-          keyExtractor={(item) => item.id}
-          renderItem={renderGame}
-          numColumns={3}
-          ListHeaderComponent={ListHeader}
-          contentContainerStyle={styles.listContent}
-          columnWrapperStyle={filteredGames.length > 0 ? styles.columnWrapper : undefined}
-          ListEmptyComponent={
+          {loading ? (
             <View style={styles.center}>
-              <Text style={styles.emptyText}>검색 결과가 없어요 😅</Text>
+              <Text style={styles.loadingText}>게임 목록 불러오는 중...</Text>
             </View>
-          }
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        />
-      )}
-    </View>
+          ) : (
+            <FlatList
+              data={filteredGames}
+              keyExtractor={(item) => item.id}
+              renderItem={renderGame}
+              numColumns={3}
+              ListHeaderComponent={ListHeader}
+              contentContainerStyle={styles.listContent}
+              columnWrapperStyle={filteredGames.length > 0 ? styles.columnWrapper : undefined}
+              ListEmptyComponent={
+                <View style={styles.center}>
+                  <Text style={styles.emptyText}>검색 결과가 없어요 😅</Text>
+                </View>
+              }
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            />
+          )}
+        </View>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
