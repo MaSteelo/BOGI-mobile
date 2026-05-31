@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import {
   View, Text, Image, TouchableOpacity, Modal,
   Animated, ScrollView, TextInput, StyleSheet,
@@ -71,18 +71,6 @@ export const getGenreStyle = (genres) => {
 };
 export { safeImageUrl };
 
-const EDIT_FIELDS = [
-  { key: "name_en",      label: "영문 이름",       type: "text" },
-  { key: "publisher",    label: "출판사",           type: "text" },
-  { key: "min_players",  label: "최소 인원",        type: "number" },
-  { key: "max_players",  label: "최대 인원",        type: "number" },
-  { key: "play_minutes", label: "플레이 시간(분)",  type: "number" },
-  { key: "min_age",      label: "권장 연령",        type: "number" },
-  { key: "genre",        label: "장르 (쉼표 구분)", type: "text" },
-  { key: "description",  label: "게임 설명",        type: "textarea" },
-  { key: "image_url",    label: "이미지 URL",       type: "image" },
-];
-
 function StarInput({ value, onChange }) {
   return (
     <View style={{ flexDirection: "row", gap: 6 }}>
@@ -95,174 +83,22 @@ function StarInput({ value, onChange }) {
   );
 }
 
-function EditModal({ game, session, visible, onClose, onSubmitted }) {
-  const [selectedField, setSelectedField] = useState(EDIT_FIELDS[0]);
-  const [newValue, setNewValue] = useState("");
-  const [imagePreviewValid, setImagePreviewValid] = useState(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!visible) {
-      setSelectedField(EDIT_FIELDS[0]);
-      setNewValue("");
-      setImagePreviewValid(null);
-      setSaving(false);
-    }
-  }, [visible]);
-
-  const currentDisplay = () => {
-    const val = game[selectedField.key];
-    if (val == null) return "";
-    if (Array.isArray(val)) return val.join(", ");
-    return String(val);
-  };
-
-  const handleFieldSelect = (field) => {
-    setSelectedField(field);
-    setNewValue("");
-    setImagePreviewValid(null);
-  };
-
-  const handleSubmit = async () => {
-    if (!session) { Alert.alert("알림", "로그인이 필요합니다"); onClose(); return; }
-    const val = newValue.trim();
-    if (!val) { Alert.alert("알림", "새 값을 입력해주세요"); return; }
-    if (selectedField.key === "image_url") {
-      if (!val.startsWith("https://")) { Alert.alert("알림", "https://로 시작하는 URL을 입력해주세요"); return; }
-      if (!imagePreviewValid) { Alert.alert("알림", "유효한 이미지 URL이 아니에요"); return; }
-    }
-    setSaving(true);
-    let error;
-    if (selectedField.key === "image_url") {
-      ({ error } = await supabase.from("image_proposals").insert({
-        game_id: game.id,
-        user_id: session.user.id,
-        image_url: val,
-      }));
-    } else {
-      const oldVal = game[selectedField.key];
-      const serializedOld = oldVal == null ? null : Array.isArray(oldVal) ? JSON.stringify(oldVal) : String(oldVal);
-      const serializedNew = selectedField.key === "genre"
-        ? JSON.stringify(val.split(",").map((s) => s.trim()).filter(Boolean))
-        : val;
-      ({ error } = await supabase.from("game_edits").insert({
-        game_id: game.id,
-        user_id: session.user.id,
-        field_name: selectedField.key,
-        old_value: serializedOld,
-        new_value: serializedNew,
-      }));
-    }
-    setSaving(false);
-    if (error) {
-      Alert.alert("오류", error.message);
-    } else {
-      Alert.alert("✅ 수정 제안이 등록되었습니다", "관리자 검토 후 반영됩니다");
-      onSubmitted?.();
-      onClose();
-    }
-  };
-
+function EditField({ label, value, onChangeText, placeholder, keyboardType, autoCapitalize, autoCorrect, multiline }) {
   return (
-    <Modal visible={visible} transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={em.backdrop} activeOpacity={1} onPress={onClose} />
-      <View style={em.sheet}>
-        <View style={em.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={em.title}>게임 설정 편집</Text>
-            <Text style={em.subtitle}>{game.name_ko}</Text>
-          </View>
-          <TouchableOpacity onPress={onClose} style={em.closeBtn}>
-            <Text style={{ color: COLORS.sub, fontSize: 14 }}>✕</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
-          <Text style={em.label}>수정할 항목</Text>
-          <View style={em.chipRow}>
-            {EDIT_FIELDS.map((f) => (
-              <TouchableOpacity
-                key={f.key}
-                onPress={() => handleFieldSelect(f)}
-                style={[em.chip, selectedField.key === f.key && em.chipActive]}
-              >
-                <Text style={[em.chipText, selectedField.key === f.key && em.chipTextActive]}>
-                  {f.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={[em.label, { marginTop: 14 }]}>현재 값</Text>
-          <View style={em.currentValueBox}>
-            <Text style={{ fontSize: 13, color: currentDisplay() ? COLORS.text : COLORS.subLight }}>
-              {currentDisplay() || "값 없음"}
-            </Text>
-          </View>
-
-          <Text style={[em.label, { marginTop: 14 }]}>새 값</Text>
-          {selectedField.type === "textarea" ? (
-            <TextInput
-              value={newValue}
-              onChangeText={setNewValue}
-              placeholder="새 값을 입력하세요"
-              placeholderTextColor={COLORS.subLight}
-              style={[em.input, { minHeight: 80, textAlignVertical: "top" }]}
-              multiline
-            />
-          ) : (
-            <TextInput
-              value={newValue}
-              onChangeText={(t) => { setNewValue(t); if (selectedField.key === "image_url") setImagePreviewValid(null); }}
-              placeholder={
-                selectedField.key === "image_url" ? "https://..." :
-                selectedField.key === "genre" ? "예: 전략, 협력" :
-                "새 값을 입력하세요"
-              }
-              placeholderTextColor={COLORS.subLight}
-              style={em.input}
-              keyboardType={selectedField.type === "number" ? "numeric" : "default"}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          )}
-
-          {selectedField.key === "image_url" && newValue.startsWith("https://") && (
-            <View style={{ marginTop: 10, alignItems: "center" }}>
-              <Text style={[em.label, { alignSelf: "flex-start" }]}>미리보기</Text>
-              <Image
-                source={{ uri: newValue }}
-                style={{ width: 120, height: 120, borderRadius: 10, backgroundColor: "#e5e7eb" }}
-                resizeMode="contain"
-                onLoad={() => setImagePreviewValid(true)}
-                onError={() => setImagePreviewValid(false)}
-              />
-              {imagePreviewValid === true && (
-                <Text style={{ fontSize: 12, color: "#22c55e", marginTop: 4, fontWeight: "600" }}>✓ 이미지 확인됨</Text>
-              )}
-              {imagePreviewValid === false && (
-                <Text style={{ fontSize: 12, color: COLORS.error, marginTop: 4 }}>이미지를 불러올 수 없어요</Text>
-              )}
-            </View>
-          )}
-
-          <TouchableOpacity
-            onPress={handleSubmit}
-            disabled={saving || !newValue.trim() || (selectedField.key === "image_url" && !imagePreviewValid)}
-            style={[
-              em.submitBtn,
-              { marginTop: 20 },
-              (saving || !newValue.trim() || (selectedField.key === "image_url" && !imagePreviewValid)) && { opacity: 0.5 },
-            ]}
-          >
-            {saving
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={em.submitBtnText}>제안 제출</Text>
-            }
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-    </Modal>
+    <View style={s.editFieldBlock}>
+      <Text style={s.editFieldLabel}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder || ""}
+        placeholderTextColor={COLORS.subLight}
+        style={[s.editFieldInput, multiline && { minHeight: 72, textAlignVertical: "top" }]}
+        keyboardType={keyboardType || "default"}
+        autoCapitalize={autoCapitalize ?? "none"}
+        autoCorrect={autoCorrect ?? false}
+        multiline={multiline}
+      />
+    </View>
   );
 }
 
@@ -282,6 +118,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
     extrapolate: "clamp",
   });
 
+  // 기록 상태
   const [myReviews, setMyReviews] = useState(null);
   const [allReviews, setAllReviews] = useState(null);
   const [loadingReviews, setLoadingReviews] = useState(false);
@@ -296,7 +133,16 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
   const [showForm, setShowForm] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  const [showEditModal, setShowEditModal] = useState(false);
+  // 편집 패널 상태 (별도 Modal 없이 플립 Modal 내부 오버레이로 렌더링)
+  const [showEditPanel, setShowEditPanel] = useState(false);
+  const [editNameKo, setEditNameKo] = useState("");
+  const [editNameEn, setEditNameEn] = useState("");
+  const [editGenre, setEditGenre] = useState("");
+  const [editPlayers, setEditPlayers] = useState("");
+  const [editMinutes, setEditMinutes] = useState("");
+  const [editImageUrl, setEditImageUrl] = useState("");
+  const [editImageValid, setEditImageValid] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const frontRotateY = flipAnim.interpolate({ inputRange: [0, 180], outputRange: ["0deg", "180deg"] });
   const backRotateY = flipAnim.interpolate({ inputRange: [0, 180], outputRange: ["180deg", "360deg"] });
@@ -407,8 +253,109 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       setEditingId(null);
       setShowForm(false);
       setConfirmDeleteId(null);
-      setShowEditModal(false);
+      setShowEditPanel(false);
     });
+  };
+
+  const openEditPanel = () => {
+    if (!session) { Alert.alert("알림", "로그인이 필요합니다"); return; }
+    setEditNameKo(game.name_ko || "");
+    setEditNameEn(game.name_en || "");
+    setEditGenre(game.genre?.join(", ") || "");
+    if (game.min_players != null) {
+      setEditPlayers(
+        game.min_players === game.max_players
+          ? String(game.min_players)
+          : `${game.min_players}~${game.max_players}`
+      );
+    } else {
+      setEditPlayers("");
+    }
+    setEditMinutes(game.play_minutes != null ? String(game.play_minutes) : "");
+    setEditImageUrl(game.image_url || "");
+    setEditImageValid(null);
+    setEditSaving(false);
+    setShowEditPanel(true);
+  };
+
+  const closeEditPanel = () => setShowEditPanel(false);
+
+  const submitEdit = async () => {
+    if (!session) { Alert.alert("알림", "로그인이 필요합니다"); return; }
+    setEditSaving(true);
+
+    const rows = [];
+
+    const push = (key, newVal, oldVal) => {
+      const nv = String(newVal ?? "").trim();
+      const ov = oldVal == null ? "" : String(oldVal).trim();
+      if (nv && nv !== ov) {
+        rows.push({
+          game_id: game.id,
+          user_id: session.user.id,
+          field_name: key,
+          old_value: ov || null,
+          new_value: nv,
+        });
+      }
+    };
+
+    push("name_ko", editNameKo, game.name_ko);
+    push("name_en", editNameEn, game.name_en);
+
+    const genreVal = editGenre.trim();
+    const genreOld = game.genre?.join(", ") ?? "";
+    if (genreVal && genreVal !== genreOld) {
+      const genreArr = genreVal.split(",").map((s) => s.trim()).filter(Boolean);
+      rows.push({
+        game_id: game.id,
+        user_id: session.user.id,
+        field_name: "genre",
+        old_value: game.genre ? JSON.stringify(game.genre) : null,
+        new_value: JSON.stringify(genreArr),
+      });
+    }
+
+    const playerVal = editPlayers.trim();
+    if (playerVal) {
+      const match = playerVal.match(/^(\d+)(?:~(\d+))?$/);
+      if (match) {
+        push("min_players", match[1], game.min_players);
+        push("max_players", match[2] || match[1], game.max_players);
+      }
+    }
+
+    push("play_minutes", editMinutes, game.play_minutes);
+
+    if (editImageUrl.trim() && editImageUrl.trim() !== (game.image_url ?? "")) {
+      if (!editImageUrl.startsWith("https://")) {
+        Alert.alert("알림", "이미지 URL은 https://로 시작해야 해요");
+        setEditSaving(false);
+        return;
+      }
+      rows.push({
+        game_id: game.id,
+        user_id: session.user.id,
+        field_name: "image_url",
+        old_value: game.image_url || null,
+        new_value: editImageUrl.trim(),
+      });
+    }
+
+    if (rows.length === 0) {
+      Alert.alert("알림", "변경된 내용이 없어요");
+      setEditSaving(false);
+      return;
+    }
+
+    const { error } = await supabase.from("game_edits").insert(rows);
+    setEditSaving(false);
+    if (error) {
+      Alert.alert("오류", error.message);
+    } else {
+      Alert.alert("✅ 수정 제안이 등록되었습니다", "관리자 검토 후 반영됩니다");
+      closeEditPanel();
+    }
   };
 
   const handleSave = async () => {
@@ -523,7 +470,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
               alignItems: "stretch",
               justifyContent: "flex-start",
             }]}>
-              {/* 상단 밴드 — 120px, 장르 그라디언트 + 이미지 + 게임명 */}
+              {/* 상단 밴드 */}
               <View style={[s.backTopBand, { backgroundColor: genreStyle.grad[0] }]}>
                 <View style={[s.backTopThumb, { backgroundColor: genreStyle.grad[1] }]}>
                   {!imgError && imageUrl ? (
@@ -540,13 +487,13 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                 </View>
               </View>
 
-              {/* 하단 스크롤 영역 */}
+              {/* 하단 스크롤 */}
               <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={s.backScrollContent}
                 keyboardShouldPersistTaps="handled"
               >
-                {/* 헤더: 게임명 + X */}
+                {/* 헤더 */}
                 <View style={s.backContentHeader}>
                   <Text style={s.backContentTitle} numberOfLines={1}>{game.name_ko || game.name_en}</Text>
                   <TouchableOpacity onPress={closeCard} style={s.closeBtn}>
@@ -603,7 +550,6 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                           );
                         })}
 
-                        {/* 새 기록 추가 버튼 (기존 기록이 있고 폼이 닫혀있을 때) */}
                         {!showForm && myReviews?.length > 0 && (
                           <TouchableOpacity
                             style={s.addRecordBtn}
@@ -613,7 +559,6 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                           </TouchableOpacity>
                         )}
 
-                        {/* 기록 작성 폼 */}
                         {showForm && (
                           <View style={s.writeFormBox}>
                             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -717,7 +662,11 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
 
                 {/* 게임 설정 편집 버튼 */}
                 {session && (
-                  <TouchableOpacity style={s.editGameBtn} onPress={() => setShowEditModal(true)}>
+                  <TouchableOpacity
+                    style={s.editGameBtn}
+                    onPress={openEditPanel}
+                    activeOpacity={0.7}
+                  >
                     <Text style={s.editGameBtnText}>✏️ 게임 설정 편집</Text>
                   </TouchableOpacity>
                 )}
@@ -792,20 +741,102 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                 })()}
               </ScrollView>
             </Animated.View>
+
+            {/* ── 편집 패널 오버레이 (별도 Modal 없이 여기서 렌더링) ── */}
+            {showEditPanel && (
+              <View style={s.editOverlay}>
+                <View style={s.editHeader}>
+                  <Text style={s.editHeaderTitle}>게임 설정 편집</Text>
+                  <TouchableOpacity onPress={closeEditPanel} style={s.closeBtn}>
+                    <Text style={{ color: COLORS.sub, fontSize: 16 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  style={{ flex: 1 }}
+                  contentContainerStyle={s.editScrollContent}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <Text style={s.editGameName}>{game.name_ko || game.name_en}</Text>
+
+                  <EditField
+                    label="게임 이름 (한글)"
+                    value={editNameKo}
+                    onChangeText={setEditNameKo}
+                    autoCapitalize="none"
+                  />
+                  <EditField
+                    label="게임 이름 (영문)"
+                    value={editNameEn}
+                    onChangeText={setEditNameEn}
+                  />
+                  <EditField
+                    label="장르 (쉼표로 구분)"
+                    value={editGenre}
+                    onChangeText={setEditGenre}
+                    placeholder="예: 전략, 협력"
+                    autoCapitalize="none"
+                  />
+                  <EditField
+                    label="인원"
+                    value={editPlayers}
+                    onChangeText={setEditPlayers}
+                    placeholder="예: 2~4"
+                    keyboardType="numbers-and-punctuation"
+                  />
+                  <EditField
+                    label="플레이 시간 (분)"
+                    value={editMinutes}
+                    onChangeText={setEditMinutes}
+                    placeholder="예: 30"
+                    keyboardType="numeric"
+                  />
+                  <EditField
+                    label="이미지 URL"
+                    value={editImageUrl}
+                    onChangeText={(t) => { setEditImageUrl(t); setEditImageValid(null); }}
+                    placeholder="https://..."
+                  />
+
+                  {editImageUrl.startsWith("https://") && (
+                    <View style={s.editImagePreview}>
+                      <Image
+                        source={{ uri: editImageUrl }}
+                        style={s.editPreviewImg}
+                        resizeMode="contain"
+                        onLoad={() => setEditImageValid(true)}
+                        onError={() => setEditImageValid(false)}
+                      />
+                      {editImageValid === true && (
+                        <Text style={s.editImgOk}>✓ 이미지 확인됨</Text>
+                      )}
+                      {editImageValid === false && (
+                        <Text style={s.editImgErr}>이미지를 불러올 수 없어요</Text>
+                      )}
+                    </View>
+                  )}
+                </ScrollView>
+
+                <View style={s.editFooter}>
+                  <TouchableOpacity style={s.editCancelBtn} onPress={closeEditPanel}>
+                    <Text style={s.editCancelBtnText}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.editSubmitBtn, editSaving && { opacity: 0.5 }]}
+                    onPress={submitEdit}
+                    disabled={editSaving}
+                  >
+                    {editSaving
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Text style={s.editSubmitBtnText}>제안하기</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </Animated.View>
         </View>
       </Modal>
-
-      {/* 게임 설정 편집 모달 */}
-      {session && (
-        <EditModal
-          game={game}
-          session={session}
-          visible={showEditModal}
-          onClose={() => setShowEditModal(false)}
-          onSubmitted={() => {}}
-        />
-      )}
     </>
   );
 }
@@ -884,29 +915,12 @@ const s = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
   },
-  backTopInfo: {
-    flex: 1,
-    marginLeft: 14,
-    minWidth: 0,
-  },
-  backTopName: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: COLORS.text,
-    lineHeight: 20,
-  },
-  backTopNameEn: {
-    fontSize: 11,
-    color: COLORS.subLight,
-    marginTop: 2,
-  },
+  backTopInfo: { flex: 1, marginLeft: 14, minWidth: 0 },
+  backTopName: { fontSize: 15, fontWeight: "800", color: COLORS.text, lineHeight: 20 },
+  backTopNameEn: { fontSize: 11, color: COLORS.subLight, marginTop: 2 },
 
-  // 뒷면 스크롤 영역
-  backScrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 40,
-  },
+  // 뒷면 스크롤
+  backScrollContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 40 },
   backContentHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -914,11 +928,8 @@ const s = StyleSheet.create({
     marginBottom: 20,
   },
   backContentTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: COLORS.text,
-    flex: 1,
-    marginRight: 8,
+    fontSize: 15, fontWeight: "800", color: COLORS.text,
+    flex: 1, marginRight: 8,
   },
   closeBtn: {
     width: 32, height: 32, borderRadius: 8,
@@ -927,15 +938,9 @@ const s = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
     flexShrink: 0,
   },
+  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 8 },
 
-  // 구분선
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 8,
-  },
-
-  // 게임 정보 섹션
+  // 게임 정보
   gameInfoSection: {
     backgroundColor: COLORS.bg,
     borderRadius: 12,
@@ -955,8 +960,7 @@ const s = StyleSheet.create({
   communityRatingCount: { fontSize: 11, color: COLORS.subLight },
   bggBadge: {
     backgroundColor: "rgba(29,78,216,0.12)",
-    borderRadius: 6,
-    paddingHorizontal: 7, paddingVertical: 2,
+    borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2,
   },
   bggBadgeText: { fontSize: 11, fontWeight: "700", color: "#1d4ed8" },
   descText: { fontSize: 12, color: COLORS.sub, lineHeight: 18, marginTop: 8 },
@@ -983,7 +987,7 @@ const s = StyleSheet.create({
   },
   sectionTitle: { fontSize: 14, fontWeight: "800", color: COLORS.text },
 
-  // 내 기록 아이템
+  // 내 기록
   myReviewItem: {
     padding: 10,
     backgroundColor: COLORS.surface,
@@ -996,20 +1000,13 @@ const s = StyleSheet.create({
     borderColor: COLORS.accent,
     backgroundColor: "#f0f9f4",
   },
-
-  // 새 기록 추가 버튼
   addRecordBtn: {
     backgroundColor: COLORS.accentLight,
     borderWidth: 1, borderColor: COLORS.accent,
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: "center",
-    marginTop: 4,
-    marginBottom: 4,
+    borderRadius: 8, paddingVertical: 8,
+    alignItems: "center", marginTop: 4, marginBottom: 4,
   },
   addRecordBtnText: { fontSize: 12, fontWeight: "700", color: COLORS.accent },
-
-  // 삭제 확인
   deleteConfirmBox: {
     backgroundColor: "#fee2e2",
     borderWidth: 1, borderColor: "#fca5a5",
@@ -1027,15 +1024,10 @@ const s = StyleSheet.create({
     borderRadius: 8, alignItems: "center",
     backgroundColor: COLORS.error,
   },
-
-  // 기록 폼
   writeFormBox: {
-    marginTop: 8,
-    padding: 16,
+    marginTop: 8, padding: 16,
     backgroundColor: COLORS.bg,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
   },
   cancelBtnText: {
     fontSize: 11, color: COLORS.sub, fontWeight: "600",
@@ -1044,43 +1036,33 @@ const s = StyleSheet.create({
   },
   starBox: {
     backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
-    alignItems: "center",
-    marginBottom: 12,
+    borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
+    padding: 16, alignItems: "center", marginBottom: 12,
   },
   scoreDisplay: { marginTop: 8, fontSize: 14, fontWeight: "700" },
   memoInput: {
     borderWidth: 1, borderColor: COLORS.border,
     borderRadius: 8, padding: 10,
     fontSize: 13, color: COLORS.text,
-    minHeight: 60,
-    backgroundColor: COLORS.surface,
-    textAlignVertical: "top",
-    marginBottom: 12,
+    minHeight: 60, backgroundColor: COLORS.surface,
+    textAlignVertical: "top", marginBottom: 12,
   },
   saveBtn: {
     backgroundColor: COLORS.accent,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
+    borderRadius: 10, paddingVertical: 12, alignItems: "center",
   },
   saveBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
   firstRecordBtn: {
     backgroundColor: COLORS.accentLight,
     borderWidth: 1, borderColor: COLORS.accent,
-    borderRadius: 10, paddingVertical: 12,
-    alignItems: "center",
+    borderRadius: 10, paddingVertical: 12, alignItems: "center",
   },
   firstRecordBtnText: { fontSize: 13, fontWeight: "700", color: COLORS.accent },
 
-  // 리뷰 아이템
+  // 리뷰
   reviewItem: {
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   reviewNick: { fontSize: 12, fontWeight: "700", color: COLORS.text },
   reviewMemo: { fontSize: 11, color: COLORS.sub, lineHeight: 16, marginTop: 3 },
@@ -1090,10 +1072,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border,
     borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6,
   },
-  likeBtnActive: {
-    borderColor: COLORS.accent,
-    backgroundColor: COLORS.accentLight,
-  },
+  likeBtnActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentLight },
   loadMoreBtn: {
     marginTop: 8, paddingVertical: 8,
     borderWidth: 1, borderColor: COLORS.border,
@@ -1101,72 +1080,70 @@ const s = StyleSheet.create({
   },
   loadMoreBtnText: { fontSize: 12, fontWeight: "600", color: COLORS.sub },
   emptyText: { fontSize: 13, color: COLORS.subLight, textAlign: "center", paddingVertical: 16 },
-});
 
-const em = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.55)",
-  },
-  sheet: {
+  // ── 편집 패널 오버레이 ──
+  editOverlay: {
     position: "absolute",
-    bottom: 0, left: 0, right: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "88%",
-    paddingBottom: 32,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 16,
+    borderRadius: 20,
+    overflow: "hidden",
   },
-  header: {
+  editHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    padding: 20,
-    paddingBottom: 14,
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  editHeaderTitle: { fontSize: 16, fontWeight: "800", color: COLORS.text },
+  editScrollContent: { padding: 20, paddingBottom: 16 },
+  editGameName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.accent,
+    marginBottom: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  title: { fontSize: 16, fontWeight: "800", color: COLORS.text },
-  subtitle: { fontSize: 12, color: COLORS.sub, marginTop: 3 },
-  closeBtn: {
-    width: 32, height: 32, borderRadius: 8,
-    borderWidth: 1, borderColor: COLORS.border,
-    backgroundColor: COLORS.bg,
-    alignItems: "center", justifyContent: "center",
-    flexShrink: 0,
+  editFieldBlock: { marginBottom: 14 },
+  editFieldLabel: {
+    fontSize: 12, fontWeight: "700", color: COLORS.sub, marginBottom: 6,
   },
-  label: { fontSize: 12, fontWeight: "700", color: COLORS.sub, marginBottom: 6 },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: {
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 8, borderWidth: 1,
-    borderColor: COLORS.border, backgroundColor: COLORS.bg,
-  },
-  chipActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentLight },
-  chipText: { fontSize: 11, fontWeight: "600", color: COLORS.sub },
-  chipTextActive: { color: COLORS.accent },
-  currentValueBox: {
-    backgroundColor: "#f3f4f6",
+  editFieldInput: {
     borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: 8,
-    paddingVertical: 9, paddingHorizontal: 12,
-    minHeight: 38,
+    borderRadius: 8, paddingVertical: 9, paddingHorizontal: 12,
+    fontSize: 13, color: COLORS.text, backgroundColor: COLORS.bg,
   },
-  input: {
+  editImagePreview: { alignItems: "center", marginTop: 8, marginBottom: 4 },
+  editPreviewImg: {
+    width: 100, height: 100, borderRadius: 8, backgroundColor: "#e5e7eb",
+  },
+  editImgOk: { fontSize: 11, color: "#22c55e", marginTop: 4, fontWeight: "600" },
+  editImgErr: { fontSize: 11, color: COLORS.error, marginTop: 4 },
+  editFooter: {
+    flexDirection: "row",
+    gap: 10,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  editCancelBtn: {
+    flex: 1, paddingVertical: 13,
     borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: 8,
-    paddingVertical: 9, paddingHorizontal: 12,
-    fontSize: 13, color: COLORS.text,
+    borderRadius: 12, alignItems: "center",
     backgroundColor: COLORS.bg,
   },
-  submitBtn: {
+  editCancelBtnText: { fontSize: 14, fontWeight: "700", color: COLORS.sub },
+  editSubmitBtn: {
+    flex: 2, paddingVertical: 13,
+    borderRadius: 12, alignItems: "center",
     backgroundColor: COLORS.accent,
-    borderRadius: 12, paddingVertical: 13,
-    alignItems: "center",
   },
-  submitBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  editSubmitBtnText: { fontSize: 14, fontWeight: "800", color: "#fff" },
 });
