@@ -30,14 +30,33 @@ const GAP = 8;
 const CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP * 2) / 3;
 
 const GENRES = [
-  "전략","협력","파티","가족","추상","경제","카드","다이스",
-  "덱빌딩","워커플레이스먼트","타일배치","추리","정체은닉","2인","솔로",
+  "전략", "가족", "파티", "추상", "테마", "카드",
+  "협력", "경제", "추리", "어드벤처", "퍼즐", "덱빌딩",
+  "다이스", "워커플레이스먼트", "타일배치", "정체은닉", "2인", "솔로",
+];
+
+const PLAYER_OPTIONS = [
+  { label: "1인", value: 1 },
+  { label: "2인", value: 2 },
+  { label: "3인", value: 3 },
+  { label: "4인", value: 4 },
+  { label: "5인", value: 5 },
+  { label: "6인+", value: 6 },
+];
+
+const TIME_OPTIONS = [
+  { label: "~15분", value: 15 },
+  { label: "~30분", value: 30 },
+  { label: "~60분", value: 60 },
+  { label: "~120분", value: 120 },
+  { label: "120분+", value: 9999 },
 ];
 
 const SORT_OPTIONS = [
   { key: "name", label: "이름순" },
   { key: "rating", label: "평점순" },
   { key: "bgg", label: "BGG순" },
+  { key: "year", label: "최신순" },
 ];
 
 export default function SearchScreen({ session }) {
@@ -49,13 +68,13 @@ export default function SearchScreen({ session }) {
   const [gameStats, setGameStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedGenres, setSelectedGenres] = useState([]);
+  const [filterPlayers, setFilterPlayers] = useState(null);
+  const [filterTime, setFilterTime] = useState(null);
   const [sortBy, setSortBy] = useState("name");
+  const [filterOpen, setFilterOpen] = useState(false);
 
-  // debounce 검색 — 입력 완료 후 결과 표시
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query);
-    }, 300);
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
     return () => clearTimeout(timer);
   }, [query]);
 
@@ -66,7 +85,7 @@ export default function SearchScreen({ session }) {
         supabase
           .from("games")
           .select(
-            "id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, genre"
+            "id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, min_age, genre"
           )
           .eq("status", "approved")
           .order("name_ko"),
@@ -76,9 +95,7 @@ export default function SearchScreen({ session }) {
           .not("total_score", "is", null),
       ]);
 
-      if (!gamesRes.error) {
-        setGames(gamesRes.data ?? []);
-      }
+      if (!gamesRes.error) setGames(gamesRes.data ?? []);
 
       if (reviewsRes.data) {
         const agg = {};
@@ -104,6 +121,15 @@ export default function SearchScreen({ session }) {
     );
   }, []);
 
+  const resetFilters = useCallback(() => {
+    setSelectedGenres([]);
+    setFilterPlayers(null);
+    setFilterTime(null);
+    setSortBy("name");
+    setQuery("");
+    setDebouncedQuery("");
+  }, []);
+
   const filteredGames = useMemo(() => {
     let list = games;
     if (debouncedQuery.trim()) {
@@ -119,21 +145,47 @@ export default function SearchScreen({ session }) {
         selectedGenres.some((genre) => g.genre?.includes(genre))
       );
     }
+    if (filterPlayers !== null) {
+      if (filterPlayers === 6) {
+        list = list.filter((g) => (g.max_players ?? 0) >= 6);
+      } else {
+        list = list.filter(
+          (g) =>
+            (g.min_players ?? 0) <= filterPlayers &&
+            filterPlayers <= (g.max_players ?? 99)
+        );
+      }
+    }
+    if (filterTime !== null) {
+      if (filterTime === 9999) {
+        list = list.filter((g) => (g.play_minutes ?? 0) > 120);
+      } else {
+        list = list.filter(
+          (g) => g.play_minutes != null && g.play_minutes <= filterTime
+        );
+      }
+    }
+    list = [...list];
     if (sortBy === "rating") {
-      list = [...list].sort((a, b) => {
-        const ar = gameStats[a.id]?.avg ?? 0;
-        const br = gameStats[b.id]?.avg ?? 0;
-        return br - ar;
-      });
+      list.sort((a, b) => (gameStats[b.id]?.avg ?? 0) - (gameStats[a.id]?.avg ?? 0));
     } else if (sortBy === "bgg") {
-      list = [...list].sort((a, b) => {
-        const ar = a.bgg_rank ?? 99999;
-        const br = b.bgg_rank ?? 99999;
-        return ar - br;
-      });
+      list.sort((a, b) => (a.bgg_rank ?? 99999) - (b.bgg_rank ?? 99999));
+    } else if (sortBy === "year") {
+      list.sort((a, b) => (b.year_published ?? 0) - (a.year_published ?? 0));
     }
     return list;
-  }, [games, debouncedQuery, selectedGenres, sortBy, gameStats]);
+  }, [games, debouncedQuery, selectedGenres, filterPlayers, filterTime, sortBy, gameStats]);
+
+  const activeFilterCount =
+    selectedGenres.length +
+    (filterPlayers !== null ? 1 : 0) +
+    (filterTime !== null ? 1 : 0);
+
+  const hasActiveFilter =
+    debouncedQuery.trim() !== "" ||
+    selectedGenres.length > 0 ||
+    filterPlayers !== null ||
+    filterTime !== null;
 
   const renderGame = useCallback(
     ({ item }) => (
@@ -149,70 +201,121 @@ export default function SearchScreen({ session }) {
 
   const ListHeader = (
     <View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
-        keyboardShouldPersistTaps="handled"
-      >
-        {selectedGenres.length > 0 && (
-          <TouchableOpacity
-            style={[styles.pill, styles.pillClear]}
-            onPress={() => setSelectedGenres([])}
+      {/* 필터 토글 행 */}
+      <View style={styles.filterToggleRow}>
+        <TouchableOpacity
+          style={[
+            styles.filterToggleBtn,
+            (filterOpen || activeFilterCount > 0) && styles.filterToggleBtnActive,
+          ]}
+          onPress={() => setFilterOpen((v) => !v)}
+        >
+          <Text
+            style={[
+              styles.filterToggleText,
+              (filterOpen || activeFilterCount > 0) && { color: "#fff" },
+            ]}
           >
-            <Text style={[styles.pillText, { color: "#fff" }]}>전체</Text>
+            {filterOpen ? "🔼" : "🔽"} 필터
+          </Text>
+          {activeFilterCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        {(hasActiveFilter || sortBy !== "name") && (
+          <TouchableOpacity onPress={resetFilters} style={styles.resetBtn}>
+            <Text style={styles.resetText}>초기화 ✕</Text>
           </TouchableOpacity>
         )}
-        {GENRES.map((g) => {
-          const active = selectedGenres.includes(g);
-          const gs = getGenreStyle([g]);
-          return (
-            <TouchableOpacity
-              key={g}
-              style={[
-                styles.pill,
-                {
-                  backgroundColor: active ? gs.grad[0] : "#f3f4f6",
-                  borderColor: active ? gs.grad[1] : "#e5e7eb",
-                },
-              ]}
-              onPress={() => toggleGenre(g)}
-            >
-              <Text
-                style={[
-                  styles.pillText,
-                  { color: active ? COLORS.text : COLORS.sub },
-                ]}
-              >
-                {g}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      <View style={styles.sortRow}>
-        {SORT_OPTIONS.map((opt) => (
-          <TouchableOpacity
-            key={opt.key}
-            style={[
-              styles.sortBtn,
-              sortBy === opt.key && styles.sortBtnActive,
-            ]}
-            onPress={() => setSortBy(opt.key)}
-          >
-            <Text
-              style={[
-                styles.sortText,
-                sortBy === opt.key && styles.sortTextActive,
-              ]}
-            >
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
         <Text style={styles.countText}>{filteredGames.length}개</Text>
       </View>
+
+      {/* 필터 패널 */}
+      {filterOpen && (
+        <View style={styles.filterPanel}>
+          {/* 장르 */}
+          <Text style={styles.sectionLabel}>장르</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+            keyboardShouldPersistTaps="handled"
+          >
+            {GENRES.map((g) => {
+              const active = selectedGenres.includes(g);
+              return (
+                <TouchableOpacity
+                  key={g}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => toggleGenre(g)}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{g}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* 인원 */}
+          <Text style={[styles.sectionLabel, { marginTop: 12 }]}>인원</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+            keyboardShouldPersistTaps="handled"
+          >
+            {PLAYER_OPTIONS.map(({ label, value }) => (
+              <TouchableOpacity
+                key={value}
+                style={[styles.chip, filterPlayers === value && styles.chipActive]}
+                onPress={() => setFilterPlayers(filterPlayers === value ? null : value)}
+              >
+                <Text style={[styles.chipText, filterPlayers === value && styles.chipTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* 시간 */}
+          <Text style={[styles.sectionLabel, { marginTop: 12 }]}>플레이 시간</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+            keyboardShouldPersistTaps="handled"
+          >
+            {TIME_OPTIONS.map(({ label, value }) => (
+              <TouchableOpacity
+                key={value}
+                style={[styles.chip, filterTime === value && styles.chipActive]}
+                onPress={() => setFilterTime(filterTime === value ? null : value)}
+              >
+                <Text style={[styles.chipText, filterTime === value && styles.chipTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* 정렬 */}
+          <Text style={[styles.sectionLabel, { marginTop: 12 }]}>정렬</Text>
+          <View style={styles.chipRowWrap}>
+            {SORT_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.chip, sortBy === opt.key && styles.chipActive]}
+                onPress={() => setSortBy(opt.key)}
+              >
+                <Text style={[styles.chipText, sortBy === opt.key && styles.chipTextActive]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
     </View>
   );
 
@@ -289,37 +392,95 @@ const styles = StyleSheet.create({
   },
   searchIcon: { fontSize: 16, marginRight: 8 },
   input: { flex: 1, fontSize: 15, color: COLORS.text, padding: 0 },
-  filterRow: {
-    paddingHorizontal: PADDING,
-    paddingBottom: 10,
-    gap: 8,
-    flexDirection: "row",
-  },
-  pill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  pillClear: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-  pillText: { fontSize: 12, fontWeight: "600" },
-  sortRow: {
+
+  filterToggleRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: PADDING,
-    paddingBottom: 12,
+    paddingBottom: 10,
     gap: 8,
   },
-  sortBtn: {
+  filterToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  filterToggleBtnActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  filterToggleText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.sub,
+  },
+  filterBadge: {
+    backgroundColor: "rgba(255,255,255,0.3)",
+    borderRadius: 10,
+    width: 17,
+    height: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterBadgeText: { fontSize: 10, fontWeight: "800", color: "#fff" },
+  resetBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  resetText: { fontSize: 12, fontWeight: "600", color: COLORS.sub },
+  countText: { marginLeft: "auto", fontSize: 12, color: COLORS.subLight },
+
+  filterPanel: {
+    marginHorizontal: PADDING,
+    marginBottom: 12,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.subLight,
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  chipRow: {
+    flexDirection: "row",
+    gap: 6,
+    paddingRight: 4,
+  },
+  chipRowWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  chip: {
     paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: 16,
-    backgroundColor: "#f3f4f6",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
   },
-  sortBtnActive: { backgroundColor: COLORS.accent },
-  sortText: { fontSize: 12, fontWeight: "600", color: COLORS.sub },
-  sortTextActive: { color: "#fff" },
-  countText: { marginLeft: "auto", fontSize: 12, color: COLORS.subLight },
+  chipActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  chipText: { fontSize: 12, fontWeight: "600", color: COLORS.sub },
+  chipTextActive: { color: "#fff" },
+
   listContent: { paddingHorizontal: PADDING, paddingBottom: 24 },
   columnWrapper: { gap: GAP, marginBottom: GAP },
   center: { flex: 1, alignItems: "center", paddingTop: 60 },

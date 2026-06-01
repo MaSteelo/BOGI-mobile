@@ -3,6 +3,7 @@ import {
   View, Text, Image, TouchableOpacity, Modal,
   Animated, ScrollView, TextInput, StyleSheet,
   ActivityIndicator, Alert, Dimensions, Easing,
+  KeyboardAvoidingView, Platform,
 } from "react-native";
 import { supabase } from "../lib/supabase";
 import { COLORS } from "../constants/colors";
@@ -140,6 +141,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
   const [editGenre, setEditGenre] = useState("");
   const [editPlayers, setEditPlayers] = useState("");
   const [editMinutes, setEditMinutes] = useState("");
+  const [editMinAge, setEditMinAge] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
   const [editImageValid, setEditImageValid] = useState(null);
   const [editSaving, setEditSaving] = useState(false);
@@ -272,6 +274,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       setEditPlayers("");
     }
     setEditMinutes(game.play_minutes != null ? String(game.play_minutes) : "");
+    setEditMinAge(game.min_age != null ? String(game.min_age) : "");
     setEditImageUrl(game.image_url || "");
     setEditImageValid(null);
     setEditSaving(false);
@@ -292,10 +295,11 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       if (nv && nv !== ov) {
         rows.push({
           game_id: game.id,
-          user_id: session.user.id,
-          field_name: key,
+          proposed_by: session.user.id,
+          field: key,
           old_value: ov || null,
           new_value: nv,
+          status: "pending",
         });
       }
     };
@@ -309,10 +313,11 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       const genreArr = genreVal.split(",").map((s) => s.trim()).filter(Boolean);
       rows.push({
         game_id: game.id,
-        user_id: session.user.id,
-        field_name: "genre",
+        proposed_by: session.user.id,
+        field: "genre",
         old_value: game.genre ? JSON.stringify(game.genre) : null,
         new_value: JSON.stringify(genreArr),
+        status: "pending",
       });
     }
 
@@ -326,6 +331,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
     }
 
     push("play_minutes", editMinutes, game.play_minutes);
+    push("min_age", editMinAge, game.min_age);
 
     if (editImageUrl.trim() && editImageUrl.trim() !== (game.image_url ?? "")) {
       if (!editImageUrl.startsWith("https://")) {
@@ -335,10 +341,11 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       }
       rows.push({
         game_id: game.id,
-        user_id: session.user.id,
-        field_name: "image_url",
+        proposed_by: session.user.id,
+        field: "image_url",
         old_value: game.image_url || null,
         new_value: editImageUrl.trim(),
+        status: "pending",
       });
     }
 
@@ -744,7 +751,11 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
 
             {/* ── 편집 패널 오버레이 (별도 Modal 없이 여기서 렌더링) ── */}
             {showEditPanel && (
-              <View style={s.editOverlay}>
+              <KeyboardAvoidingView
+                style={s.editOverlay}
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                keyboardVerticalOffset={0}
+              >
                 <View style={s.editHeader}>
                   <Text style={s.editHeaderTitle}>게임 설정 편집</Text>
                   <TouchableOpacity onPress={closeEditPanel} style={s.closeBtn}>
@@ -792,6 +803,13 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                     keyboardType="numeric"
                   />
                   <EditField
+                    label="나이 제한 (세)"
+                    value={editMinAge}
+                    onChangeText={setEditMinAge}
+                    placeholder="예: 10"
+                    keyboardType="numeric"
+                  />
+                  <EditField
                     label="이미지 URL"
                     value={editImageUrl}
                     onChangeText={(t) => { setEditImageUrl(t); setEditImageValid(null); }}
@@ -832,7 +850,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                     }
                   </TouchableOpacity>
                 </View>
-              </View>
+              </KeyboardAvoidingView>
             )}
           </Animated.View>
         </View>

@@ -55,6 +55,7 @@ function SubmitGameModal({ visible, onClose, session }) {
   const [minPlayers, setMinPlayers] = useState("");
   const [maxPlayers, setMaxPlayers] = useState("");
   const [playMinutes, setPlayMinutes] = useState("");
+  const [minAge, setMinAge] = useState("");
   const [genre, setGenre] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -62,7 +63,7 @@ function SubmitGameModal({ visible, onClose, session }) {
   useEffect(() => {
     if (!visible) {
       setNameKo(""); setNameEn(""); setMinPlayers(""); setMaxPlayers("");
-      setPlayMinutes(""); setGenre(""); setDescription(""); setSaving(false);
+      setPlayMinutes(""); setMinAge(""); setGenre(""); setDescription(""); setSaving(false);
     }
   }, [visible]);
 
@@ -72,19 +73,17 @@ function SubmitGameModal({ visible, onClose, session }) {
       return;
     }
     setSaving(true);
-    const game_data = {
-      name_ko: nameKo.trim(),
-      name_en: nameEn.trim() || null,
-      min_players: minPlayers ? parseInt(minPlayers, 10) : null,
-      max_players: maxPlayers ? parseInt(maxPlayers, 10) : null,
-      play_minutes: playMinutes ? parseInt(playMinutes, 10) : null,
-      genre: genre.trim() ? genre.split(",").map((g) => g.trim()).filter(Boolean) : null,
-      description: description.trim() || null,
-    };
     const { error } = await supabase.from("game_submissions").insert({
-      user_id: session.user.id,
-      game_data,
-      status: "pending",
+      submitted_by: session.user.id,
+      name_ko:      nameKo.trim(),
+      name_en:      nameEn.trim()      || null,
+      min_players:  minPlayers  ? parseInt(minPlayers, 10)  : null,
+      max_players:  maxPlayers  ? parseInt(maxPlayers, 10)  : null,
+      play_minutes: playMinutes ? parseInt(playMinutes, 10) : null,
+      min_age:      minAge      ? parseInt(minAge, 10)      : null,
+      genre:        genre.trim() ? genre.split(",").map((g) => g.trim()).filter(Boolean) : null,
+      description:  description.trim() || null,
+      status:       "pending",
     });
     setSaving(false);
     if (error) {
@@ -167,6 +166,17 @@ function SubmitGameModal({ visible, onClose, session }) {
             </View>
           </View>
           <View style={sg.field}>
+            <Text style={sg.label}>나이 제한 (세)</Text>
+            <TextInput
+              value={minAge}
+              onChangeText={setMinAge}
+              style={[sg.input, { width: 100 }]}
+              keyboardType="numeric"
+              placeholder="예: 10"
+              placeholderTextColor={COLORS.subLight}
+            />
+          </View>
+          <View style={sg.field}>
             <Text style={sg.label}>장르 (쉼표로 구분)</Text>
             <TextInput
               value={genre}
@@ -238,7 +248,7 @@ export default function HomeScreen({ session }) {
         const [gamesRes, reviewsRes] = await Promise.all([
           supabase
             .from("games")
-            .select("id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, genre")
+            .select("id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, min_age, genre")
             .eq("status", "approved")
             .order("name_ko"),
           supabase.from("reviews").select("game_id, total_score").not("total_score", "is", null),

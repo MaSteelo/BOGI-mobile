@@ -77,7 +77,7 @@ function EditItem({ item, statusTab, onApprove, onReject }) {
         제안자: {item.profiles?.nickname ?? "알 수 없음"}
       </Text>
       <View style={styles.fieldRow}>
-        <Text style={styles.fieldLabel}>{item.field_name}</Text>
+        <Text style={styles.fieldLabel}>{item.field}</Text>
         <Text style={styles.fieldArrow}>→</Text>
         <Text style={styles.fieldValue} numberOfLines={2}>
           {item.new_value}
@@ -116,12 +116,11 @@ function EditItem({ item, statusTab, onApprove, onReject }) {
 }
 
 function SubmissionItem({ item, statusTab, onApprove, onReject }) {
-  const gd = item.game_data ?? {};
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.gameName}>
-          {gd.name_ko || gd.name_en || "이름 없음"}
+          {item.name_ko || item.name_en || "이름 없음"}
         </Text>
         <Text style={styles.dateText}>{item.created_at?.slice(0, 10)}</Text>
       </View>
@@ -129,26 +128,29 @@ function SubmissionItem({ item, statusTab, onApprove, onReject }) {
         제안자: {item.profiles?.nickname ?? "알 수 없음"}
       </Text>
       <View style={styles.gameDataRow}>
-        {gd.name_en ? (
-          <Text style={styles.dataText}>영문명: {gd.name_en}</Text>
+        {item.name_en ? (
+          <Text style={styles.dataText}>영문명: {item.name_en}</Text>
         ) : null}
-        {gd.min_players ? (
+        {item.min_players ? (
           <Text style={styles.dataText}>
-            인원: {gd.min_players}~{gd.max_players}인
+            인원: {item.min_players}~{item.max_players}인
           </Text>
         ) : null}
-        {gd.play_minutes ? (
-          <Text style={styles.dataText}>시간: {gd.play_minutes}분</Text>
+        {item.play_minutes ? (
+          <Text style={styles.dataText}>시간: {item.play_minutes}분</Text>
         ) : null}
-        {gd.genre?.length ? (
-          <Text style={styles.dataText}>장르: {gd.genre.join(", ")}</Text>
+        {item.min_age ? (
+          <Text style={styles.dataText}>나이: {item.min_age}세+</Text>
         ) : null}
-        {gd.publisher ? (
-          <Text style={styles.dataText}>출판사: {gd.publisher}</Text>
+        {item.genre?.length ? (
+          <Text style={styles.dataText}>장르: {item.genre.join(", ")}</Text>
         ) : null}
-        {gd.description ? (
+        {item.publisher ? (
+          <Text style={styles.dataText}>출판사: {item.publisher}</Text>
+        ) : null}
+        {item.description ? (
           <Text style={styles.dataText} numberOfLines={3}>
-            설명: {gd.description}
+            설명: {item.description}
           </Text>
         ) : null}
       </View>
@@ -266,7 +268,7 @@ export default function AdminScreen({ session, profile }) {
     if (mainTab === "edits") {
       const { data, error } = await supabase
         .from("game_edits")
-        .select("*, games(name_ko, name_en), profiles(nickname)")
+        .select("*, games(name_ko, name_en), profiles!proposed_by(nickname)")
         .eq("status", statusTab)
         .order("created_at", { ascending: false });
       if (error) console.warn("[AdminScreen] edits 오류:", error.message);
@@ -274,7 +276,7 @@ export default function AdminScreen({ session, profile }) {
     } else if (mainTab === "submissions") {
       const { data, error } = await supabase
         .from("game_submissions")
-        .select("*, profiles(nickname)")
+        .select("*, profiles!submitted_by(nickname)")
         .eq("status", statusTab)
         .order("created_at", { ascending: false });
       if (error) console.warn("[AdminScreen] submissions 오류:", error.message);
@@ -314,21 +316,21 @@ export default function AdminScreen({ session, profile }) {
         .eq("id", item.id)
     );
 
-    if (item.game_id && item.field_name) {
+    if (item.game_id && item.field) {
       updates.push(
         supabase
           .from("games")
-          .update({ [item.field_name]: item.new_value })
+          .update({ [item.field]: item.new_value })
           .eq("id", item.game_id)
       );
     }
 
     updates.push(
       supabase.from("notifications").insert({
-        user_id: item.user_id,
+        user_id: item.proposed_by,
         type: "edit_approved",
         title: "편집 승인됨",
-        body: `"${item.games?.name_ko}" 의 ${item.field_name} 편집이 승인되었어요.`,
+        body: `"${item.games?.name_ko}" 의 ${item.field} 편집이 승인되었어요.`,
         related_id: item.id,
       })
     );
@@ -351,7 +353,7 @@ export default function AdminScreen({ session, profile }) {
         .update({ status: "rejected" })
         .eq("id", item.id),
       supabase.from("notifications").insert({
-        user_id: item.user_id,
+        user_id: item.proposed_by,
         type: "edit_rejected",
         title: "편집 거절됨",
         body: reason
@@ -370,22 +372,21 @@ export default function AdminScreen({ session, profile }) {
 
   const approveSubmission = async (item) => {
     console.log("[AdminScreen] 등록 승인:", item.id);
-    const gd = item.game_data ?? {};
     const [subRes, gameRes] = await Promise.all([
       supabase
         .from("game_submissions")
-        .update({ status: "approved" })
+        .update({ status: "approved", reviewed_by: session.user.id, reviewed_at: new Date().toISOString() })
         .eq("id", item.id),
       supabase.from("games").insert({
-        name_ko: gd.name_ko,
-        name_en: gd.name_en,
-        min_players: gd.min_players,
-        max_players: gd.max_players,
-        play_minutes: gd.play_minutes,
-        genre: gd.genre,
-        publisher: gd.publisher,
-        description: gd.description,
-        min_age: gd.min_age,
+        name_ko:      item.name_ko,
+        name_en:      item.name_en      || null,
+        min_players:  item.min_players  ?? null,
+        max_players:  item.max_players  ?? null,
+        play_minutes: item.play_minutes ?? null,
+        min_age:      item.min_age      ?? null,
+        genre:        item.genre        || null,
+        publisher:    item.publisher    || null,
+        description:  item.description  || null,
         status: "approved",
       }),
     ]);
@@ -396,10 +397,10 @@ export default function AdminScreen({ session, profile }) {
     }
 
     await supabase.from("notifications").insert({
-      user_id: item.user_id,
+      user_id: item.submitted_by,
       type: "submit_approved",
       title: "게임 등록 승인됨",
-      body: `"${gd.name_ko || gd.name_en}" 이(가) 등록되었어요!`,
+      body: `"${item.name_ko || item.name_en}" 이(가) 등록되었어요!`,
       related_id: item.id,
     });
 
@@ -409,19 +410,18 @@ export default function AdminScreen({ session, profile }) {
 
   const rejectSubmission = async (item, reason) => {
     console.log("[AdminScreen] 등록 거절:", item.id, reason);
-    const gd = item.game_data ?? {};
     const [subRes] = await Promise.all([
       supabase
         .from("game_submissions")
-        .update({ status: "rejected", reject_reason: reason || null })
+        .update({ status: "rejected", reviewed_by: session.user.id, reviewed_at: new Date().toISOString() })
         .eq("id", item.id),
       supabase.from("notifications").insert({
-        user_id: item.user_id,
+        user_id: item.submitted_by,
         type: "submit_rejected",
         title: "게임 등록 거절됨",
         body: reason
           ? `거절 사유: ${reason}`
-          : `"${gd.name_ko || gd.name_en}" 등록이 거절되었어요.`,
+          : `"${item.name_ko || item.name_en}" 등록이 거절되었어요.`,
         related_id: item.id,
       }),
     ]);
