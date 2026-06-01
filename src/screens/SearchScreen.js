@@ -52,6 +52,16 @@ const TIME_OPTIONS = [
   { label: "120분+", value: 9999 },
 ];
 
+const AGE_OPTIONS = [
+  { label: "전체연령", value: null },
+  { label: "6세+", value: 6 },
+  { label: "8세+", value: 8 },
+  { label: "10세+", value: 10 },
+  { label: "12세+", value: 12 },
+  { label: "14세+", value: 14 },
+  { label: "18세+", value: 18 },
+];
+
 const SORT_OPTIONS = [
   { key: "name", label: "이름순" },
   { key: "rating", label: "평점순" },
@@ -70,6 +80,7 @@ export default function SearchScreen({ session }) {
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [filterPlayers, setFilterPlayers] = useState(null);
   const [filterTime, setFilterTime] = useState(null);
+  const [filterAge, setFilterAge] = useState(null);
   const [sortBy, setSortBy] = useState("name");
   const [filterOpen, setFilterOpen] = useState(false);
 
@@ -125,6 +136,7 @@ export default function SearchScreen({ session }) {
     setSelectedGenres([]);
     setFilterPlayers(null);
     setFilterTime(null);
+    setFilterAge(null);
     setSortBy("name");
     setQuery("");
     setDebouncedQuery("");
@@ -165,6 +177,9 @@ export default function SearchScreen({ session }) {
         );
       }
     }
+    if (filterAge !== null) {
+      list = list.filter((g) => g.min_age == null || g.min_age <= filterAge);
+    }
     list = [...list];
     if (sortBy === "rating") {
       list.sort((a, b) => (gameStats[b.id]?.avg ?? 0) - (gameStats[a.id]?.avg ?? 0));
@@ -174,18 +189,20 @@ export default function SearchScreen({ session }) {
       list.sort((a, b) => (b.year_published ?? 0) - (a.year_published ?? 0));
     }
     return list;
-  }, [games, debouncedQuery, selectedGenres, filterPlayers, filterTime, sortBy, gameStats]);
+  }, [games, debouncedQuery, selectedGenres, filterPlayers, filterTime, filterAge, sortBy, gameStats]);
 
   const activeFilterCount =
     selectedGenres.length +
     (filterPlayers !== null ? 1 : 0) +
-    (filterTime !== null ? 1 : 0);
+    (filterTime !== null ? 1 : 0) +
+    (filterAge !== null ? 1 : 0);
 
   const hasActiveFilter =
     debouncedQuery.trim() !== "" ||
     selectedGenres.length > 0 ||
     filterPlayers !== null ||
-    filterTime !== null;
+    filterTime !== null ||
+    filterAge !== null;
 
   const renderGame = useCallback(
     ({ item }) => (
@@ -293,6 +310,27 @@ export default function SearchScreen({ session }) {
                 onPress={() => setFilterTime(filterTime === value ? null : value)}
               >
                 <Text style={[styles.chipText, filterTime === value && styles.chipTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* 나이 */}
+          <Text style={[styles.sectionLabel, { marginTop: 12 }]}>나이</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+            keyboardShouldPersistTaps="handled"
+          >
+            {AGE_OPTIONS.map(({ label, value }) => (
+              <TouchableOpacity
+                key={label}
+                style={[styles.chip, filterAge === value && styles.chipActive]}
+                onPress={() => setFilterAge(filterAge === value ? null : value)}
+              >
+                <Text style={[styles.chipText, filterAge === value && styles.chipTextActive]}>
                   {label}
                 </Text>
               </TouchableOpacity>

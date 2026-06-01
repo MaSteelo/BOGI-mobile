@@ -74,7 +74,7 @@ function EditItem({ item, statusTab, onApprove, onReject }) {
         <Text style={styles.dateText}>{item.created_at?.slice(0, 10)}</Text>
       </View>
       <Text style={styles.submitterText}>
-        제안자: {item.profiles?.nickname ?? "알 수 없음"}
+        제안자: {item.proposerNickname ?? "알 수 없음"}
       </Text>
       <View style={styles.fieldRow}>
         <Text style={styles.fieldLabel}>{item.field}</Text>
@@ -125,7 +125,7 @@ function SubmissionItem({ item, statusTab, onApprove, onReject }) {
         <Text style={styles.dateText}>{item.created_at?.slice(0, 10)}</Text>
       </View>
       <Text style={styles.submitterText}>
-        제안자: {item.profiles?.nickname ?? "알 수 없음"}
+        제안자: {item.proposerNickname ?? "알 수 없음"}
       </Text>
       <View style={styles.gameDataRow}>
         {item.name_en ? (
@@ -266,21 +266,39 @@ export default function AdminScreen({ session, profile }) {
   const loadData = async () => {
     setLoading(true);
     if (mainTab === "edits") {
-      const { data, error } = await supabase
+      const { data: rows, error } = await supabase
         .from("game_edits")
-        .select("*, games(name_ko, name_en), profiles!proposed_by(nickname)")
+        .select("*, games(name_ko, name_en)")
         .eq("status", statusTab)
         .order("created_at", { ascending: false });
-      if (error) console.warn("[AdminScreen] edits 오류:", error.message);
-      setEdits(data ?? []);
+      console.log("[AdminScreen] game_edits SELECT — count:", rows?.length ?? 0, "error:", error?.message ?? "없음");
+      if (error) console.error("[AdminScreen] game_edits 오류 상세:", error.code, error.details, error.hint);
+      if (rows?.length > 0) {
+        const userIds = [...new Set(rows.map((r) => r.proposed_by).filter(Boolean))];
+        const { data: profileRows } = await supabase.from("profiles").select("id, nickname").in("id", userIds);
+        const nickMap = {};
+        profileRows?.forEach((p) => { nickMap[p.id] = p.nickname; });
+        setEdits(rows.map((r) => ({ ...r, proposerNickname: nickMap[r.proposed_by] || "알 수 없음" })));
+      } else {
+        setEdits([]);
+      }
     } else if (mainTab === "submissions") {
-      const { data, error } = await supabase
+      const { data: rows, error } = await supabase
         .from("game_submissions")
-        .select("*, profiles!submitted_by(nickname)")
+        .select("*")
         .eq("status", statusTab)
         .order("created_at", { ascending: false });
-      if (error) console.warn("[AdminScreen] submissions 오류:", error.message);
-      setSubmissions(data ?? []);
+      console.log("[AdminScreen] game_submissions SELECT — count:", rows?.length ?? 0, "error:", error?.message ?? "없음");
+      if (error) console.error("[AdminScreen] game_submissions 오류 상세:", error.code, error.details, error.hint);
+      if (rows?.length > 0) {
+        const userIds = [...new Set(rows.map((r) => r.submitted_by).filter(Boolean))];
+        const { data: profileRows } = await supabase.from("profiles").select("id, nickname").in("id", userIds);
+        const nickMap = {};
+        profileRows?.forEach((p) => { nickMap[p.id] = p.nickname; });
+        setSubmissions(rows.map((r) => ({ ...r, proposerNickname: nickMap[r.submitted_by] || "알 수 없음" })));
+      } else {
+        setSubmissions([]);
+      }
     } else if (mainTab === "images") {
       const { data, error } = await supabase
         .from("image_proposals")

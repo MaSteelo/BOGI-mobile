@@ -355,7 +355,9 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       return;
     }
 
+    console.log("[GameCard] game_edits INSERT 시도 — rows:", rows.length, rows.map((r) => r.field));
     const { error } = await supabase.from("game_edits").insert(rows);
+    console.log("[GameCard] game_edits INSERT 결과 — error:", error?.message ?? "없음", "code:", error?.code ?? "-");
     setEditSaving(false);
     if (error) {
       Alert.alert("오류", error.message);
