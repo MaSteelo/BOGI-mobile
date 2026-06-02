@@ -1,4 +1,12 @@
 import "react-native-gesture-handler";
+
+// 프로덕션 빌드에서 console.log/warn 비활성화
+if (!__DEV__) {
+  console.log = () => {};
+  console.warn = () => {};
+  console.info = () => {};
+}
+
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";

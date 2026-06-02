@@ -21,7 +21,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1e643c"
       },
-      "package": "com.bogi.app"
+      "package": "com.bogi.app",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png"
