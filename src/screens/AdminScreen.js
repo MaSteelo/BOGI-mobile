@@ -16,6 +16,21 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "../constants/colors";
 import { supabase } from "../lib/supabase";
 
+const NUMERIC_FIELDS = ["min_players", "max_players", "play_minutes", "min_age", "bgg_rank"];
+
+function parseEditValue(field, raw) {
+  if (NUMERIC_FIELDS.includes(field)) return parseInt(raw, 10);
+  if (field === "genre") {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch {
+      return raw.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  return raw;
+}
+
 const STATUS_TABS = [
   { key: "pending", label: "대기" },
   { key: "approved", label: "승인" },
@@ -324,51 +339,63 @@ export default function AdminScreen({ session, profile }) {
   };
 
   const approveEdit = async (item) => {
-    console.log("[AdminScreen] 편집 승인:", item.id);
-    const updates = [];
+    console.log("[AdminScreen] 편집 승인 시작 — id:", item.id, "field:", item.field, "new_value:", item.new_value);
 
-    updates.push(
-      supabase
-        .from("game_edits")
-        .update({ status: "approved" })
-        .eq("id", item.id)
-    );
+    const parsedValue = parseEditValue(item.field, item.new_value);
+    console.log("[AdminScreen] 파싱된 값:", parsedValue, "(타입:", typeof parsedValue, ")");
 
-    if (item.game_id && item.field) {
-      updates.push(
-        supabase
-          .from("games")
-          .update({ [item.field]: item.new_value })
-          .eq("id", item.game_id)
-      );
+    if (typeof parsedValue === "number" && isNaN(parsedValue)) {
+      Alert.alert("오류", `숫자 변환 실패: ${item.new_value}`);
+      return;
     }
 
-    updates.push(
-      supabase.from("notifications").insert({
-        user_id: item.proposed_by,
-        type: "edit_approved",
-        title: "편집 승인됨",
-        body: `"${item.games?.name_ko}" 의 ${item.field} 편집이 승인되었어요.`,
-        related_id: item.id,
+    // 1단계: games 테이블 실제 반영
+    const { error: gameErr } = await supabase
+      .from("games")
+      .update({ [item.field]: parsedValue })
+      .eq("id", item.game_id);
+    console.log("[AdminScreen] games UPDATE —", gameErr ? `실패: ${gameErr.message}` : "성공");
+
+    if (gameErr) {
+      Alert.alert("오류", `games 업데이트 실패: ${gameErr.message}`);
+      return;
+    }
+
+    // 2단계: 제안 status 변경 + reviewed 정보 기록
+    const { error: editErr } = await supabase
+      .from("game_edits")
+      .update({
+        status: "approved",
+        reviewed_by: session.user.id,
+        reviewed_at: new Date().toISOString(),
       })
-    );
+      .eq("id", item.id);
+    console.log("[AdminScreen] game_edits status 업데이트 —", editErr ? `실패: ${editErr.message}` : "성공");
 
-    const results = await Promise.all(updates);
-    const failed = results.find((r) => r.error);
-    if (failed) {
-      Alert.alert("오류", failed.error.message);
-    } else {
-      Alert.alert("완료", "편집이 승인되었어요.");
-      loadData();
-    }
+    // 3단계: 알림 발송
+    const { error: notifErr } = await supabase.from("notifications").insert({
+      user_id: item.proposed_by,
+      type: "edit_approved",
+      title: "편집 승인됨",
+      body: `"${item.games?.name_ko ?? "게임"}" 의 ${item.field} 편집이 승인되었어요.`,
+      related_id: item.id,
+    });
+    console.log("[AdminScreen] 알림 발송 —", notifErr ? `실패: ${notifErr.message}` : "성공");
+
+    Alert.alert("완료", "편집이 승인되었어요.");
+    loadData();
   };
 
   const rejectEdit = async (item, reason) => {
-    console.log("[AdminScreen] 편집 거절:", item.id, reason);
+    console.log("[AdminScreen] 편집 거절 시작 — id:", item.id, "reason:", reason);
     const [editRes, notifRes] = await Promise.all([
       supabase
         .from("game_edits")
-        .update({ status: "rejected" })
+        .update({
+          status: "rejected",
+          reviewed_by: session.user.id,
+          reviewed_at: new Date().toISOString(),
+        })
         .eq("id", item.id),
       supabase.from("notifications").insert({
         user_id: item.proposed_by,
@@ -376,10 +403,11 @@ export default function AdminScreen({ session, profile }) {
         title: "편집 거절됨",
         body: reason
           ? `거절 사유: ${reason}`
-          : `"${item.games?.name_ko}" 편집이 거절되었어요.`,
+          : `"${item.games?.name_ko ?? "게임"}" 편집이 거절되었어요.`,
         related_id: item.id,
       }),
     ]);
+    console.log("[AdminScreen] 거절 처리 —", editRes.error ? `실패: ${editRes.error.message}` : "성공");
     if (editRes.error) {
       Alert.alert("오류", editRes.error.message);
     } else {
