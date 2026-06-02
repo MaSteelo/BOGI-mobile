@@ -339,34 +339,49 @@ export default function AdminScreen({ session, profile }) {
   };
 
   const approveEdit = async (item) => {
-    console.log("[AdminScreen] 편집 승인 시작 — id:", item.id, "field:", item.field, "new_value:", item.new_value);
+    // 실제 item 구조 전체 출력 — game_id 유무, 타입 확인용
+    console.log("[AdminScreen] 편집 승인 item 전체:", JSON.stringify({
+      id: item.id,
+      game_id: item.game_id,
+      game_id_type: typeof item.game_id,
+      field: item.field,
+      old_value: item.old_value,
+      new_value: item.new_value,
+      proposed_by: item.proposed_by,
+      games: item.games,
+    }));
 
     const parsedValue = parseEditValue(item.field, item.new_value);
-    console.log("[AdminScreen] 파싱된 값:", parsedValue, "(타입:", typeof parsedValue, ")");
+    console.log("[AdminScreen] 파싱된 값:", JSON.stringify(parsedValue), "(타입:", typeof parsedValue, ")");
 
     if (typeof parsedValue === "number" && isNaN(parsedValue)) {
       Alert.alert("오류", `숫자 변환 실패: ${item.new_value}`);
       return;
     }
 
+    if (!item.game_id) {
+      console.error("[AdminScreen] game_id가 없음! item:", JSON.stringify(item));
+      Alert.alert("오류", "game_id가 없어요. 데이터 구조를 확인해주세요.");
+      return;
+    }
+
     // 1단계: games 테이블 실제 반영
-    // .select("id") 를 붙여야 RLS silent-fail(에러 없이 0행 업데이트) 감지 가능
     const { data: updatedRows, error: gameErr } = await supabase
       .from("games")
       .update({ [item.field]: parsedValue })
       .eq("id", item.game_id)
       .select("id");
-    console.log("[AdminScreen] games UPDATE — error:", gameErr?.message ?? "없음", "updated rows:", updatedRows?.length ?? "unknown");
+    console.log("[AdminScreen] games UPDATE — error:", gameErr ? JSON.stringify(gameErr) : "없음", "/ updated rows:", JSON.stringify(updatedRows));
 
     if (gameErr) {
       Alert.alert("오류", `games 업데이트 실패: ${gameErr.message}`);
       return;
     }
     if (!updatedRows || updatedRows.length === 0) {
-      console.warn("[AdminScreen] games UPDATE: 0행 업데이트 — RLS 정책 또는 game_id 불일치 가능성");
+      console.warn("[AdminScreen] games UPDATE 0행 — RLS 차단 또는 game_id 불일치");
       Alert.alert(
         "반영 실패",
-        "games 테이블에 변경이 적용되지 않았어요.\nSupabase 대시보드에서 games 테이블의 UPDATE RLS 정책을 확인해주세요."
+        `game_id: ${item.game_id}\nfield: ${item.field}\n\nRLS 정책 또는 game_id 불일치 가능성이 있어요.`
       );
       return;
     }
