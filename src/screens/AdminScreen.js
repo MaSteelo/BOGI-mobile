@@ -350,14 +350,24 @@ export default function AdminScreen({ session, profile }) {
     }
 
     // 1단계: games 테이블 실제 반영
-    const { error: gameErr } = await supabase
+    // .select("id") 를 붙여야 RLS silent-fail(에러 없이 0행 업데이트) 감지 가능
+    const { data: updatedRows, error: gameErr } = await supabase
       .from("games")
       .update({ [item.field]: parsedValue })
-      .eq("id", item.game_id);
-    console.log("[AdminScreen] games UPDATE —", gameErr ? `실패: ${gameErr.message}` : "성공");
+      .eq("id", item.game_id)
+      .select("id");
+    console.log("[AdminScreen] games UPDATE — error:", gameErr?.message ?? "없음", "updated rows:", updatedRows?.length ?? "unknown");
 
     if (gameErr) {
       Alert.alert("오류", `games 업데이트 실패: ${gameErr.message}`);
+      return;
+    }
+    if (!updatedRows || updatedRows.length === 0) {
+      console.warn("[AdminScreen] games UPDATE: 0행 업데이트 — RLS 정책 또는 game_id 불일치 가능성");
+      Alert.alert(
+        "반영 실패",
+        "games 테이블에 변경이 적용되지 않았어요.\nSupabase 대시보드에서 games 테이블의 UPDATE RLS 정책을 확인해주세요."
+      );
       return;
     }
 
