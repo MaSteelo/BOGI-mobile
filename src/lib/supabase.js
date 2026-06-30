@@ -1,8 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import * as SecureStore from "expo-secure-store";
+import Constants from "expo-constants";
 
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+const SUPABASE_URL =
+  Constants.expoConfig?.extra?.supabaseUrl ||
+  process.env.EXPO_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY =
+  Constants.expoConfig?.extra?.supabaseAnonKey ||
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 console.log("[Supabase] URL:", SUPABASE_URL ?? "❌ undefined");
 console.log("[Supabase] KEY:", SUPABASE_ANON_KEY ? "✓ 있음" : "❌ undefined");
