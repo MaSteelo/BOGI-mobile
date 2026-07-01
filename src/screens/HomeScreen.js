@@ -58,12 +58,13 @@ function SubmitGameModal({ visible, onClose, session }) {
   const [minAge, setMinAge] = useState("");
   const [genre, setGenre] = useState("");
   const [description, setDescription] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!visible) {
       setNameKo(""); setNameEn(""); setMinPlayers(""); setMaxPlayers("");
-      setPlayMinutes(""); setMinAge(""); setGenre(""); setDescription(""); setSaving(false);
+      setPlayMinutes(""); setMinAge(""); setGenre(""); setDescription(""); setImageUrl(""); setSaving(false);
     }
   }, [visible]);
 
@@ -83,6 +84,7 @@ function SubmitGameModal({ visible, onClose, session }) {
       min_age:      minAge      ? parseInt(minAge, 10)      : null,
       genre:        genre.trim() ? genre.split(",").map((g) => g.trim()).filter(Boolean) : null,
       description:  description.trim() || null,
+      image_url:    imageUrl.trim()    || null,
       status:       "pending",
     });
     setSaving(false);
@@ -196,6 +198,25 @@ function SubmitGameModal({ visible, onClose, session }) {
               placeholder="게임에 대한 간단한 설명을 적어주세요"
               placeholderTextColor={COLORS.subLight}
             />
+          </View>
+          <View style={sg.field}>
+            <Text style={sg.label}>이미지 URL (선택)</Text>
+            <TextInput
+              value={imageUrl}
+              onChangeText={setImageUrl}
+              style={sg.input}
+              placeholder="https://..."
+              placeholderTextColor={COLORS.subLight}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {imageUrl.trim().startsWith("https://") && (
+              <Image
+                source={{ uri: imageUrl.trim() }}
+                style={{ width: 80, height: 80, borderRadius: 8, marginTop: 8, borderWidth: 1, borderColor: COLORS.border }}
+                resizeMode="cover"
+              />
+            )}
           </View>
           <TouchableOpacity
             onPress={handleSubmit}

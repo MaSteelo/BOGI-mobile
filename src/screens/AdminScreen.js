@@ -41,6 +41,13 @@ const MAIN_TABS = [
   { key: "edits", label: "게임 설정 편집" },
   { key: "submissions", label: "게임 추가" },
   { key: "images", label: "이미지 제안" },
+  { key: "reports", label: "🚨 신고 목록" },
+];
+
+const REPORT_STATUS_TABS = [
+  { key: "pending",   label: "대기" },
+  { key: "resolved",  label: "처리됨" },
+  { key: "dismissed", label: "기각됨" },
 ];
 
 function RejectModal({ visible, onClose, onSubmit }) {
@@ -270,6 +277,7 @@ export default function AdminScreen({ session, profile }) {
   const [edits, setEdits] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [imageProposals, setImageProposals] = useState([]);
+  const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [rejectTarget, setRejectTarget] = useState(null);
 
@@ -333,6 +341,23 @@ export default function AdminScreen({ session, profile }) {
         setImageProposals(rows.map((r) => ({ ...r, proposerNickname: nickMap[r.user_id] || "알 수 없음" })));
       } else {
         setImageProposals([]);
+      }
+    } else if (mainTab === "reports") {
+      const { data: rows, error } = await supabase
+        .from("reports")
+        .select("id, review_id, reporter_id, reason, detail, status, created_at, reviews(memo, total_score)")
+        .eq("status", statusTab)
+        .order("created_at", { ascending: statusTab === "pending" });
+      if (error) console.warn("[AdminScreen] reports 오류:", error.message);
+      const rrows = rows ?? [];
+      if (rrows.length > 0) {
+        const reporterIds = [...new Set(rrows.map((r) => r.reporter_id))];
+        const { data: profilesData } = await supabase.from("profiles").select("id, nickname").in("id", reporterIds);
+        const nickMap = {};
+        profilesData?.forEach((p) => { nickMap[p.id] = p.nickname; });
+        setReports(rrows.map((r) => ({ ...r, reporterNickname: nickMap[r.reporter_id] || "알 수 없음" })));
+      } else {
+        setReports([]);
       }
     }
     setLoading(false);
@@ -563,10 +588,18 @@ export default function AdminScreen({ session, profile }) {
     );
   }
 
+  const handleReportAction = async (reportId, newStatus) => {
+    await supabase.from("reports").update({ status: newStatus }).eq("id", reportId);
+    loadData();
+  };
+
   const items =
-    mainTab === "edits" ? edits :
+    mainTab === "edits"       ? edits :
     mainTab === "submissions" ? submissions :
+    mainTab === "reports"     ? reports :
     imageProposals;
+
+  const activeStatusTabs = mainTab === "reports" ? REPORT_STATUS_TABS : STATUS_TABS;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -597,7 +630,7 @@ export default function AdminScreen({ session, profile }) {
 
       {/* Status sub-tabs */}
       <View style={styles.statusTabRow}>
-        {STATUS_TABS.map((t) => (
+        {activeStatusTabs.map((t) => (
           <TouchableOpacity
             key={t.key}
             style={[
@@ -642,6 +675,30 @@ export default function AdminScreen({ session, profile }) {
                 onApprove={approveSubmission}
                 onReject={(i) => setRejectTarget({ type: "submission", item: i })}
               />
+            ) : mainTab === "reports" ? (
+              <View style={{ backgroundColor: COLORS.surface, borderRadius: 12, marginHorizontal: 12, marginBottom: 10, padding: 16, borderWidth: 1, borderColor: COLORS.border }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <Text style={{ fontWeight: "700", fontSize: 13, color: COLORS.text, flex: 1, marginRight: 8 }}>{item.reason}</Text>
+                  <Text style={{ fontSize: 11, color: COLORS.subLight }}>{item.created_at?.slice(0, 10)}</Text>
+                </View>
+                {item.detail ? <Text style={{ fontSize: 12, color: COLORS.sub, marginBottom: 6 }}>{item.detail}</Text> : null}
+                <Text style={{ fontSize: 11, color: COLORS.subLight, marginBottom: item.reviews?.memo ? 8 : 0 }}>신고자: {item.reporterNickname}</Text>
+                {item.reviews?.memo ? (
+                  <View style={{ backgroundColor: COLORS.bg, borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                    <Text style={{ fontSize: 12, color: COLORS.sub }}>{item.reviews.memo.slice(0, 100)}{item.reviews.memo.length > 100 ? "..." : ""}</Text>
+                  </View>
+                ) : null}
+                {statusTab === "pending" && (
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <TouchableOpacity onPress={() => handleReportAction(item.id, "dismissed")} style={{ flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}>
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.sub }}>기각</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleReportAction(item.id, "resolved")} style={{ flex: 2, backgroundColor: COLORS.error, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}>
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: "#fff" }}>처리 완료</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
             ) : (
               <ImageProposalItem
                 item={item}

@@ -72,6 +72,103 @@ export const getGenreStyle = (genres) => {
 };
 export { safeImageUrl };
 
+const DETAIL_FIELDS = [
+  { key: "story",         label: "스토리",  col: "story_rating"        },
+  { key: "difficulty",    label: "난이도",  col: "difficulty_rating"   },
+  { key: "replayability", label: "리플레이",col: "replay_rating"       },
+  { key: "quality",       label: "품질",    col: "quality_rating"      },
+  { key: "convenience",   label: "편의",    col: "convenience_rating"  },
+];
+
+const REPORT_REASONS = ["스팸/광고", "욕설/비하", "스포일러", "게임과 관련 없는 내용", "기타"];
+
+function SmallStarInput({ value, onChange }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 4 }}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <TouchableOpacity key={n} onPress={() => onChange(n === value ? 0 : n)} hitSlop={6}>
+          <Text style={{ fontSize: 22, color: n <= value ? COLORS.accent : "#e5e7eb" }}>★</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+function ReportModal({ reviewId, session, onClose }) {
+  const [reason, setReason] = useState("");
+  const [detail, setDetail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const handleReport = async () => {
+    if (!reason) return;
+    setSubmitting(true);
+    const { error } = await supabase.from("reports").insert({
+      review_id:   reviewId,
+      reporter_id: session.user.id,
+      reason,
+      detail: detail.trim() || null,
+    });
+    setSubmitting(false);
+    if (error && error.code !== "23505") {
+      Alert.alert("오류", error.message);
+    } else {
+      setDone(true);
+    }
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 20 }}>
+        <View style={{ backgroundColor: "#fff", borderRadius: 16, width: "100%", maxWidth: 340, padding: 24 }}>
+          {done ? (
+            <View style={{ alignItems: "center", paddingVertical: 16 }}>
+              <Text style={{ fontSize: 36, marginBottom: 12 }}>✅</Text>
+              <Text style={{ fontWeight: "800", fontSize: 15, color: COLORS.text, marginBottom: 6 }}>신고가 접수되었습니다</Text>
+              <Text style={{ fontSize: 12, color: COLORS.sub, marginBottom: 20 }}>검토 후 조치가 이루어집니다.</Text>
+              <TouchableOpacity onPress={onClose} style={{ backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 32 }}>
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>확인</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <Text style={{ fontWeight: "800", fontSize: 15, color: COLORS.text, marginBottom: 16 }}>리뷰 신고</Text>
+              {REPORT_REASONS.map((r) => (
+                <TouchableOpacity key={r} onPress={() => setReason(r)} style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: reason === r ? COLORS.accent : COLORS.border, alignItems: "center", justifyContent: "center" }}>
+                    {reason === r && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.accent }} />}
+                  </View>
+                  <Text style={{ fontSize: 13, color: COLORS.text }}>{r}</Text>
+                </TouchableOpacity>
+              ))}
+              {reason === "기타" && (
+                <TextInput
+                  value={detail}
+                  onChangeText={setDetail}
+                  placeholder="기타 사유를 입력해주세요"
+                  placeholderTextColor={COLORS.subLight}
+                  multiline
+                  style={{ backgroundColor: "#fafafa", borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, fontSize: 13, minHeight: 72, textAlignVertical: "top", marginBottom: 14 }}
+                />
+              )}
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                <TouchableOpacity onPress={onClose} style={{ flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingVertical: 11, alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.sub }}>취소</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleReport} disabled={!reason || submitting} style={{ flex: 2, backgroundColor: !reason || submitting ? "#e5e7eb" : COLORS.error, borderRadius: 10, paddingVertical: 11, alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: !reason || submitting ? COLORS.sub : "#fff" }}>
+                    {submitting ? "처리 중..." : "신고하기"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function StarInput({ value, onChange }) {
   return (
     <View style={{ flexDirection: "row", gap: 6 }}>
@@ -128,11 +225,14 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
   const [reviewsShowCount, setReviewsShowCount] = useState(10);
 
   const [totalScore, setTotalScore] = useState(0);
+  const [detailScores, setDetailScores] = useState({ story: 0, difficulty: 0, replayability: 0, quality: 0, convenience: 0 });
+  const [detailExpanded, setDetailExpanded] = useState(false);
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [reportingReviewId, setReportingReviewId] = useState(null);
 
   // 편집 패널 상태 (별도 Modal 없이 플립 Modal 내부 오버레이로 렌더링)
   const [showEditPanel, setShowEditPanel] = useState(false);
@@ -170,7 +270,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
     setAllReviewsLoading(true);
     const { data: rows } = await supabase
       .from("reviews")
-      .select("id, user_id, total_score, memo, created_at")
+      .select("id, user_id, total_score, memo, created_at, story_rating, difficulty_rating, replay_rating, quality_rating, convenience_rating")
       .eq("game_id", game.id)
       .not("total_score", "is", null)
       .order("created_at", { ascending: false })
@@ -251,6 +351,8 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       setLikesMap({});
       setReviewsShowCount(10);
       setTotalScore(0);
+      setDetailScores({ story: 0, difficulty: 0, replayability: 0, quality: 0, convenience: 0 });
+      setDetailExpanded(false);
       setMemo("");
       setEditingId(null);
       setShowForm(false);
@@ -370,7 +472,16 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
   const handleSave = async () => {
     if (!session || totalScore === 0) { Alert.alert("알림", "별점을 선택해주세요"); return; }
     setSaving(true);
-    const payload = { total_score: totalScore, memo: memo.trim() || null, rating_mode: "total" };
+    const payload = {
+      total_score:         totalScore,
+      memo:                memo.trim() || null,
+      rating_mode:         "total",
+      story_rating:        detailScores.story        || null,
+      difficulty_rating:   detailScores.difficulty   || null,
+      replay_rating:       detailScores.replayability|| null,
+      quality_rating:      detailScores.quality      || null,
+      convenience_rating:  detailScores.convenience  || null,
+    };
     let error;
     if (editingId) {
       ({ error } = await supabase.from("reviews").update(payload).eq("id", editingId).eq("user_id", session.user.id));
@@ -544,7 +655,20 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                                   <Text style={{ color: COLORS.accent, fontWeight: "700", fontSize: 11 }}>★ {Number(r.total_score).toFixed(1)}</Text>
                                   <TouchableOpacity
-                                    onPress={() => { setEditingId(r.id); setTotalScore(r.total_score || 0); setMemo(r.memo || ""); setShowForm(true); }}
+                                    onPress={() => {
+                                      setEditingId(r.id);
+                                      setTotalScore(r.total_score || 0);
+                                      setMemo(r.memo || "");
+                                      setDetailScores({
+                                        story:         r.story_rating        || 0,
+                                        difficulty:    r.difficulty_rating   || 0,
+                                        replayability: r.replay_rating       || 0,
+                                        quality:       r.quality_rating      || 0,
+                                        convenience:   r.convenience_rating  || 0,
+                                      });
+                                      setDetailExpanded(!!(r.story_rating || r.difficulty_rating || r.replay_rating || r.quality_rating || r.convenience_rating));
+                                      setShowForm(true);
+                                    }}
                                     hitSlop={6}
                                   >
                                     <Text style={{ fontSize: 13 }}>✏️</Text>
@@ -574,7 +698,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                               <Text style={{ fontSize: 13, fontWeight: "800", color: COLORS.text }}>
                                 {editingId ? "기록 수정하기" : "새 기록 추가"}
                               </Text>
-                              <TouchableOpacity onPress={() => { setShowForm(false); setEditingId(null); setTotalScore(0); setMemo(""); }}>
+                              <TouchableOpacity onPress={() => { setShowForm(false); setEditingId(null); setTotalScore(0); setMemo(""); setDetailScores({ story: 0, difficulty: 0, replayability: 0, quality: 0, convenience: 0 }); setDetailExpanded(false); }}>
                                 <Text style={s.cancelBtnText}>취소</Text>
                               </TouchableOpacity>
                             </View>
@@ -589,6 +713,25 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                               <Text style={[s.scoreDisplay, { color: totalScore > 0 ? COLORS.accent : COLORS.subLight }]}>
                                 {totalScore > 0 ? `${totalScore}.0 / 5` : "별을 선택해주세요"}
                               </Text>
+                            </View>
+                            {/* 세부 별점 */}
+                            <View style={{ marginBottom: 12 }}>
+                              <TouchableOpacity onPress={() => setDetailExpanded((v) => !v)} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 }}>
+                                <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.sub }}>세부 별점</Text>
+                                <Text style={{ fontSize: 10, color: COLORS.subLight }}>선택</Text>
+                                <Text style={{ fontSize: 10, color: COLORS.sub }}>{detailExpanded ? "▲" : "▼"}</Text>
+                              </TouchableOpacity>
+                              {detailExpanded && (
+                                <View style={{ marginTop: 8, padding: 12, backgroundColor: "#fafafa", borderRadius: 10, borderWidth: 1, borderColor: COLORS.border }}>
+                                  <Text style={{ fontSize: 11, color: COLORS.subLight, marginBottom: 10 }}>세부 별점은 통계에 반영되지 않습니다.</Text>
+                                  {DETAIL_FIELDS.map(({ key, label }) => (
+                                    <View key={key} style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                                      <Text style={{ fontSize: 12, color: COLORS.sub, fontWeight: "600", width: 52 }}>{label}</Text>
+                                      <SmallStarInput value={detailScores[key]} onChange={(v) => setDetailScores((prev) => ({ ...prev, [key]: v }))} />
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
                             </View>
                             <TextInput
                               value={memo}
@@ -701,6 +844,23 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                           </View>
                         )}
                       </View>
+                      {(() => {
+                        const detailAvgs = DETAIL_FIELDS.map(({ label, col }) => {
+                          const vals = allReviews.map((r) => r[col]).filter(Boolean);
+                          return vals.length > 0 ? { label, avg: vals.reduce((a, b) => a + b, 0) / vals.length } : null;
+                        }).filter(Boolean);
+                        if (detailAvgs.length === 0) return null;
+                        return (
+                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                            {detailAvgs.map(({ label, avg: da }) => (
+                              <View key={label} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fafafa", borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 8, paddingVertical: 3 }}>
+                                <Text style={{ fontSize: 11, color: COLORS.sub }}>{label}</Text>
+                                <Text style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700" }}>★ {da.toFixed(1)}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        );
+                      })()}
                       {allReviewsLoading ? (
                         <ActivityIndicator size="small" color={COLORS.accent} />
                       ) : others.length === 0 ? (
@@ -720,7 +880,12 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                               </View>
                               {r.memo ? <Text style={s.reviewMemoText}>{r.memo}</Text> : null}
                               {r.user_id !== session?.user.id && (
-                                <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 6 }}>
+                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+                                  {session && (
+                                    <TouchableOpacity onPress={() => setReportingReviewId(r.id)} hitSlop={8}>
+                                      <Text style={{ fontSize: 12, color: COLORS.subLight }}>⚠️ 신고</Text>
+                                    </TouchableOpacity>
+                                  )}
                                   <TouchableOpacity
                                     onPress={() => toggleLike(r.id)}
                                     style={[s.likeBtn, likesMap[r.id]?.likedByMe && s.likeBtnActive]}
@@ -750,6 +915,11 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                 })()}
               </ScrollView>
             </Animated.View>
+
+            {/* ── 신고 모달 ── */}
+            {reportingReviewId && session && (
+              <ReportModal reviewId={reportingReviewId} session={session} onClose={() => setReportingReviewId(null)} />
+            )}
 
             {/* ── 편집 패널 오버레이 (별도 Modal 없이 여기서 렌더링) ── */}
             {showEditPanel && (
