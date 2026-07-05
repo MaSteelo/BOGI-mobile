@@ -13,6 +13,7 @@ import { COLORS } from "../constants/colors";
 import { supabase } from "../lib/supabase";
 import GameCard from "../components/GameCard";
 import NotificationBell from "../components/NotificationBell";
+import SettingsScreen from "./SettingsScreen";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const PADDING = 16;
@@ -22,13 +23,13 @@ const CARD_WIDTH = (SCREEN_WIDTH - PADDING * 2 - GAP * 2) / 3;
 const REVIEWS_QUERY =
   "*, games(id, name_ko, name_en, genre, min_players, max_players, play_minutes, bgg_rank, image_url)";
 
-function Avatar({ nickname, size = 72 }) {
+function Avatar({ nickname, color, size = 72 }) {
   const letter = nickname?.charAt(0)?.toUpperCase() || "?";
   return (
     <View
       style={[
         styles.avatar,
-        { width: size, height: size, borderRadius: size / 2 },
+        { width: size, height: size, borderRadius: size / 2, backgroundColor: color || COLORS.accent },
       ]}
     >
       <Text style={[styles.avatarLetter, { fontSize: size * 0.42 }]}>
@@ -149,10 +150,15 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("records");
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   useEffect(() => {
     if (isOwnPage && ownProfile) setProfile(ownProfile);
   }, [ownProfile]);
+
+  const handleProfileUpdate = (updatedFields) => {
+    setProfile((prev) => ({ ...prev, ...updatedFields }));
+  };
 
   useEffect(() => {
     if (!uid) return;
@@ -224,7 +230,7 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
     <View>
       {/* Profile */}
       <View style={styles.profileSection}>
-        <Avatar nickname={nickname} />
+        <Avatar nickname={nickname} color={profile?.avatar_color} />
         <View style={styles.profileInfo}>
           <Text style={styles.nickname}>{nickname}</Text>
           {profile?.created_at && (
@@ -233,6 +239,15 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
             </Text>
           )}
         </View>
+        {isOwnPage && (
+          <TouchableOpacity
+            onPress={() => setSettingsVisible(true)}
+            style={styles.settingsBtn}
+            hitSlop={8}
+          >
+            <Text style={{ fontSize: 20 }}>⚙️</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Stats */}
@@ -306,6 +321,14 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
         {isOwnPage && <NotificationBell session={session} />}
       </View>
 
+      <SettingsScreen
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+        session={session}
+        profile={profile}
+        onProfileUpdate={handleProfileUpdate}
+      />
+
       <FlatList
         data={activeTab === "records" ? reviewedGames : []}
         keyExtractor={(item) => item.id}
@@ -354,9 +377,12 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   avatar: {
-    backgroundColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
+  },
+  settingsBtn: {
+    marginLeft: "auto",
+    padding: 4,
   },
   avatarLetter: { color: "#fff", fontWeight: "800" },
   profileInfo: { gap: 4 },

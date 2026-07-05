@@ -42,3 +42,29 @@ CREATE POLICY "reports_select_own" ON reports
 -- CREATE POLICY "reports_admin_select" ON reports
 --   FOR SELECT TO authenticated
 --   USING (auth.uid() = '<admin-user-uuid>');
+
+-- ============================================================
+-- BOGI 마이그레이션 v2: 아바타 색상 + 피드백
+-- ============================================================
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_color text DEFAULT '#1e643c';
+
+CREATE TABLE IF NOT EXISTS feedback (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  type       text NOT NULL CHECK (type IN ('bug','feature','other')),
+  title      text NOT NULL,
+  detail     text,
+  status     text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','reviewed','closed')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "feedback_insert" ON feedback
+  FOR INSERT TO authenticated
+  WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "feedback_select_own" ON feedback
+  FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
