@@ -25,7 +25,7 @@ export default {
         backgroundColor: "#1e643c",
       },
       package: "com.bogi.app",
-      versionCode: 2,
+      versionCode: 3,
     },
     web: {
       favicon: "./assets/favicon.png",
