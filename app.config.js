@@ -15,6 +15,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.ibogi.bogiapp",
+      buildNumber: "3",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },
