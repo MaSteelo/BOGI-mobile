@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, TextInput, FlatList, StyleSheet,
   ActivityIndicator, TouchableOpacity, Image, Dimensions,
-  Modal, ScrollView, Alert,
+  Modal, ScrollView, Alert, Linking,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../lib/supabase";
@@ -463,6 +463,13 @@ export default function HomeScreen({ session }) {
         numColumns={3}
         keyExtractor={(item) => item.id.toString()}
         ListHeaderComponent={ListHeader}
+        ListFooterComponent={
+          <View style={{ paddingVertical: 20, alignItems: "center" }}>
+            <TouchableOpacity onPress={() => Linking.openURL("https://boardgamegeek.com")}>
+              <Text style={{ fontSize: 11, color: "#a3a3a3" }}>Powered by BoardGameGeek</Text>
+            </TouchableOpacity>
+          </View>
+        }
         contentContainerStyle={{ paddingHorizontal: PADDING, paddingBottom: insets.bottom + 68 }}
         columnWrapperStyle={{ gap: COL_GAP, marginBottom: COL_GAP }}
         ListEmptyComponent={

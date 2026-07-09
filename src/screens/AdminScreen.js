@@ -616,12 +616,28 @@ export default function AdminScreen({ session, profile }) {
   }
 
   const handleReportAction = async (reportId, newStatus) => {
-    await supabase.from("reports").update({ status: newStatus }).eq("id", reportId);
+    const { error } = await supabase.from("reports").update({ status: newStatus }).eq("id", reportId);
+    if (error) { Alert.alert("오류", error.message); return; }
     loadData();
   };
 
+  const handleDeleteReview = async (reviewId, reportId) => {
+    Alert.alert("리뷰 삭제", "해당 리뷰를 삭제하시겠습니까? 되돌릴 수 없습니다.", [
+      { text: "취소", style: "cancel" },
+      {
+        text: "삭제", style: "destructive", onPress: async () => {
+          const { error } = await supabase.from("reviews").delete().eq("id", reviewId);
+          if (error) { Alert.alert("오류", error.message); return; }
+          await supabase.from("reports").update({ status: "resolved" }).eq("id", reportId);
+          loadData();
+        },
+      },
+    ]);
+  };
+
   const handleFeedbackAction = async (feedbackId, newStatus) => {
-    await supabase.from("feedback").update({ status: newStatus }).eq("id", feedbackId);
+    const { error } = await supabase.from("feedback").update({ status: newStatus }).eq("id", feedbackId);
+    if (error) { Alert.alert("오류", error.message); return; }
     loadData();
   };
 
@@ -725,13 +741,20 @@ export default function AdminScreen({ session, profile }) {
                   </View>
                 ) : null}
                 {statusTab === "pending" && (
-                  <View style={{ flexDirection: "row", gap: 8 }}>
-                    <TouchableOpacity onPress={() => handleReportAction(item.id, "dismissed")} style={{ flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}>
-                      <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.sub }}>기각</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleReportAction(item.id, "resolved")} style={{ flex: 2, backgroundColor: COLORS.error, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}>
-                      <Text style={{ fontSize: 12, fontWeight: "700", color: "#fff" }}>처리 완료</Text>
-                    </TouchableOpacity>
+                  <View style={{ gap: 8 }}>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TouchableOpacity onPress={() => handleReportAction(item.id, "dismissed")} style={{ flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}>
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.sub }}>무시</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleReportAction(item.id, "resolved")} style={{ flex: 1, backgroundColor: COLORS.accent, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}>
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: "#fff" }}>해결</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {item.review_id && (
+                      <TouchableOpacity onPress={() => handleDeleteReview(item.review_id, item.id)} style={{ borderWidth: 1, borderColor: COLORS.error, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}>
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.error }}>리뷰 삭제</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
               </View>

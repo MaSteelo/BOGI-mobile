@@ -21,7 +21,7 @@ const PRIVACY_SECTIONS = [
   { title: "4. 개인정보의 제3자 제공", body: "BOGI는 이용자의 개인정보를 제3자에게 제공하지 않습니다. 단, 이용자가 사전에 동의한 경우 또는 법령의 규정에 따른 경우는 예외입니다." },
   { title: "5. 개인정보 처리 위탁", body: "서비스는 인증 및 데이터 저장을 위해 Supabase Inc.에 개인정보 처리를 위탁합니다. Supabase는 서비스 제공 목적 외로 개인정보를 활용하지 않습니다." },
   { title: "6. 이용자의 권리", body: "• 개인정보 열람 및 수정 요청\n• 개인정보 삭제 및 회원 탈퇴 요청\n• 개인정보 처리 정지 요청" },
-  { title: "7. 개인정보 보호책임자 및 문의", body: "서비스명: BOGI\n담당자: 전준기\n이메일: talljoongi@gmail.com" },
+  { title: "7. 개인정보 보호책임자 및 문의", body: "서비스명: BOGI\n이메일: talljoongi@gmail.com" },
 ];
 
 export default function SettingsScreen({ visible, onClose, session, profile, onProfileUpdate }) {
@@ -149,7 +149,7 @@ export default function SettingsScreen({ visible, onClose, session, profile, onP
                 <Ionicons name="close" size={24} color={COLORS.text} />
               </TouchableOpacity>
             </View>
-            <ScrollView>
+            <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
               <Text style={s.sectionLabel}>계정</Text>
               <TouchableOpacity style={s.row} onPress={() => setView("edit")}>
                 <Text style={s.rowLabel}>회원정보 수정</Text>
@@ -330,8 +330,8 @@ const s = StyleSheet.create({
   },
   rowLabel: { fontSize: 15, color: COLORS.text, fontWeight: "500" },
   rowDivider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: 20 },
-  bggContainer: { paddingVertical: 24, alignItems: "center" },
-  bggText: { fontSize: 11, color: COLORS.subLight },
+  bggContainer: { paddingVertical: 28, alignItems: "center" },
+  bggText: { fontSize: 12, color: COLORS.sub, textDecorationLine: "underline" },
   formContent: { padding: 20, paddingBottom: 48, gap: 2 },
   formLabel: { fontSize: 12, fontWeight: "700", color: COLORS.sub, marginBottom: 6, marginTop: 14 },
   optLabel: { fontSize: 11, color: COLORS.subLight, fontWeight: "400" },

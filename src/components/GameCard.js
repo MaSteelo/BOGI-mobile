@@ -845,19 +845,28 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                         )}
                       </View>
                       {(() => {
-                        const detailAvgs = DETAIL_FIELDS.map(({ label, col }) => {
-                          const vals = allReviews.map((r) => r[col]).filter(Boolean);
-                          return vals.length > 0 ? { label, avg: vals.reduce((a, b) => a + b, 0) / vals.length } : null;
-                        }).filter(Boolean);
-                        if (detailAvgs.length === 0) return null;
+                        const hasAny = DETAIL_FIELDS.some(({ col }) => allReviews.some((r) => r[col]));
                         return (
-                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                            {detailAvgs.map(({ label, avg: da }) => (
-                              <View key={label} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fafafa", borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 8, paddingVertical: 3 }}>
-                                <Text style={{ fontSize: 11, color: COLORS.sub }}>{label}</Text>
-                                <Text style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700" }}>★ {da.toFixed(1)}</Text>
-                              </View>
-                            ))}
+                          <View style={{ backgroundColor: COLORS.bg, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, padding: 12, marginBottom: 12 }}>
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.sub, marginBottom: 8 }}>세부 별점 평균</Text>
+                            {!hasAny ? (
+                              <Text style={{ fontSize: 12, color: COLORS.subLight, textAlign: "center" }}>세부 별점 데이터가 없습니다</Text>
+                            ) : (
+                              DETAIL_FIELDS.map(({ key, label, col }) => {
+                                const vals = allReviews.map((r) => r[col]).filter(Boolean);
+                                if (vals.length === 0) return null;
+                                const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+                                return (
+                                  <View key={key} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                    <Text style={{ fontSize: 11, color: COLORS.sub, width: 44 }}>{label}</Text>
+                                    <View style={{ flex: 1, height: 5, backgroundColor: COLORS.border, borderRadius: 3, overflow: "hidden" }}>
+                                      <View style={{ width: `${(avg / 5) * 100}%`, height: "100%", backgroundColor: COLORS.accent, borderRadius: 3 }} />
+                                    </View>
+                                    <Text style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700", width: 26, textAlign: "right" }}>★{avg.toFixed(1)}</Text>
+                                  </View>
+                                );
+                              })
+                            )}
                           </View>
                         );
                       })()}
@@ -876,16 +885,18 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                                     <Text style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700" }}>★ {Number(r.total_score).toFixed(1)}</Text>
                                   )}
                                 </View>
-                                <Text style={{ fontSize: 11, color: COLORS.subLight }}>{r.created_at?.slice(0, 10)}</Text>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                  <Text style={{ fontSize: 11, color: COLORS.subLight }}>{r.created_at?.slice(0, 10)}</Text>
+                                  {session && r.user_id !== session?.user.id && (
+                                    <TouchableOpacity onPress={() => setReportingReviewId(r.id)} hitSlop={8}>
+                                      <Text style={{ fontSize: 13, color: COLORS.subLight, opacity: 0.7 }}>⚑</Text>
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
                               </View>
                               {r.memo ? <Text style={s.reviewMemoText}>{r.memo}</Text> : null}
                               {r.user_id !== session?.user.id && (
-                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                                  {session && (
-                                    <TouchableOpacity onPress={() => setReportingReviewId(r.id)} hitSlop={8}>
-                                      <Text style={{ fontSize: 12, color: COLORS.subLight }}>⚠️ 신고</Text>
-                                    </TouchableOpacity>
-                                  )}
+                                <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", marginTop: 6 }}>
                                   <TouchableOpacity
                                     onPress={() => toggleLike(r.id)}
                                     style={[s.likeBtn, likesMap[r.id]?.likedByMe && s.likeBtnActive]}
