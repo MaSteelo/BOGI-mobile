@@ -15,7 +15,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.ibogi.bogiapp",
-      buildNumber: "3",
+      buildNumber: "4",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },
@@ -26,7 +26,7 @@ export default {
         backgroundColor: "#1e643c",
       },
       package: "com.bogi.app",
-      versionCode: 3,
+      versionCode: 4,
     },
     web: {
       favicon: "./assets/favicon.png",
