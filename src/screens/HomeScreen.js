@@ -385,6 +385,12 @@ export default function HomeScreen({ session }) {
               />
             )}
           />
+          <TouchableOpacity
+            onPress={() => Linking.openURL("https://boardgamegeek.com")}
+            style={s.bggBadge}
+          >
+            <Text style={s.bggBadgeText}>Powered by BGG</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -546,6 +552,15 @@ const s = StyleSheet.create({
   accentBar: { width: 3, height: 20, borderRadius: 2, backgroundColor: COLORS.accent, marginRight: 8 },
   sectionTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text, letterSpacing: -0.3 },
   sectionSub: { fontSize: 12, color: COLORS.sub, marginTop: 3, marginLeft: 11 },
+  bggBadge: {
+    alignSelf: "flex-start",
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: COLORS.accentLight,
+  },
+  bggBadgeText: { fontSize: 11, fontWeight: "700", color: COLORS.accent },
 
   rankBadge: {
     position: "absolute",

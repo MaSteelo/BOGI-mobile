@@ -3,20 +3,25 @@
 //   node upload_game_image.js <game-id> --url <image-url>
 //   node upload_game_image.js <game-id> --file <파일경로>
 //
-// SUPABASE_SERVICE_KEY 환경변수 필요:
-//   SUPABASE_SERVICE_KEY=eyJ... node upload_game_image.js ...
+// .env에 다음 환경변수 필요 (.env.example 참고):
+//   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, BGG_API_TOKEN
 
+require('dotenv/config');
 const { createClient } = require('@supabase/supabase-js');
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const SUPABASE_URL = 'https://nwvyezccwzkpyqiqaejk.supabase.co';
-const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53dnllemNjd3prcHlxaXFhZWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNTA4MTUsImV4cCI6MjA5MzkyNjgxNX0.eHvEbiwJYdWADXeY30sMLcaXmoxO3CKTMsvmMoUh7bY';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY;
-const BGG_AUTH = 'Bearer 002f773e-5bd8-43c1-8964-ed078f044681';
+const REQUIRED_ENV = ['VITE_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'BGG_API_TOKEN'];
+const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+if (missingEnv.length > 0) {
+  console.error(`.env에 다음 환경변수가 없습니다: ${missingEnv.join(', ')}`);
+  process.exit(1);
+}
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const STORAGE_BUCKET = 'game-images';
 const STORAGE_PUBLIC_PREFIX = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/`;
 
@@ -51,7 +56,7 @@ function fetchUrl(url, headers = {}) {
 async function fromBgg(bggId) {
   const url = `https://boardgamegeek.com/xmlapi2/thing?id=${bggId}&type=boardgame,boardgameexpansion`;
   for (let i = 0; i < 3; i++) {
-    const res = await fetchUrl(url, { Authorization: BGG_AUTH });
+    const res = await fetchUrl(url, { Authorization: `Bearer ${process.env.BGG_API_TOKEN}` });
     if (res.statusCode === 202) {
       console.log('BGG 처리 중... 3초 대기');
       await new Promise((r) => setTimeout(r, 3000));

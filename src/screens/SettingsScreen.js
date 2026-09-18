@@ -177,8 +177,11 @@ export default function SettingsScreen({ visible, onClose, session, profile, onP
               </TouchableOpacity>
 
               <View style={s.bggContainer}>
-                <TouchableOpacity onPress={() => Linking.openURL("https://boardgamegeek.com")}>
-                  <Text style={s.bggText}>Powered by BoardGameGeek</Text>
+                <TouchableOpacity
+                  onPress={() => Linking.openURL("https://boardgamegeek.com")}
+                  style={s.bggBadge}
+                >
+                  <Text style={s.bggText}>Powered by BGG</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -331,7 +334,13 @@ const s = StyleSheet.create({
   rowLabel: { fontSize: 15, color: COLORS.text, fontWeight: "500" },
   rowDivider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: 20 },
   bggContainer: { paddingVertical: 28, alignItems: "center" },
-  bggText: { fontSize: 12, color: COLORS.sub, textDecorationLine: "underline" },
+  bggBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: COLORS.accentLight,
+  },
+  bggText: { fontSize: 12, fontWeight: "700", color: COLORS.accent },
   formContent: { padding: 20, paddingBottom: 48, gap: 2 },
   formLabel: { fontSize: 12, fontWeight: "700", color: COLORS.sub, marginBottom: 6, marginTop: 14 },
   optLabel: { fontSize: 11, color: COLORS.subLight, fontWeight: "400" },
