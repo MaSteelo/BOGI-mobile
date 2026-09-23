@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -231,37 +230,6 @@ export default function AuthScreen() {
             </>
           )}
 
-          {/* ── 소셜 로그인 (signin/signup 전용) ── */}
-          {mode !== "reset" && (
-            <>
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>또는</Text>
-                <View style={styles.dividerLine} />
-              </View>
-
-              <View style={styles.socialRow}>
-                <TouchableOpacity
-                  style={styles.googleBtn}
-                  onPress={() => Alert.alert("준비 중입니다")}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.googleG}>G</Text>
-                  <Text style={styles.socialBtnText}>Google</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.kakaoBtn}
-                  onPress={() => Alert.alert("준비 중입니다")}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.kakaoK}>K</Text>
-                  <Text style={styles.socialBtnText}>Kakao</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-
           {/* ── 모드 전환 ── */}
           <View style={styles.modeSwitchRow}>
             {mode === "reset" ? (
@@ -449,62 +417,6 @@ const styles = StyleSheet.create({
   },
   messageTextError: {
     color: COLORS.error,
-  },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 20,
-    gap: 12,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.border,
-  },
-  dividerText: {
-    fontSize: 12,
-    color: COLORS.subLight,
-  },
-  socialRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  googleBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 10,
-    paddingVertical: 11,
-  },
-  googleG: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: "#4285F4",
-  },
-  kakaoBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    backgroundColor: "#FEE500",
-    borderRadius: 10,
-    paddingVertical: 11,
-  },
-  kakaoK: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-  socialBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.text,
   },
   modeSwitchRow: {
     marginTop: 20,
