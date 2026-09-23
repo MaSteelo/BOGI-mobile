@@ -18,6 +18,7 @@ import { COLORS } from "./src/constants/colors";
 import AuthScreen from "./src/screens/AuthScreen";
 import TabNavigator from "./src/navigation/TabNavigator";
 import UserProfileScreen from "./src/screens/UserProfileScreen";
+import CollectionDetailScreen from "./src/screens/CollectionDetailScreen";
 
 const Stack = createStackNavigator();
 
@@ -80,6 +81,9 @@ export default function App() {
             </Stack.Screen>
             <Stack.Screen name="UserProfile">
               {(props) => <UserProfileScreen {...props} session={session} />}
+            </Stack.Screen>
+            <Stack.Screen name="CollectionDetail">
+              {(props) => <CollectionDetailScreen {...props} session={session} />}
             </Stack.Screen>
           </Stack.Navigator>
         ) : (

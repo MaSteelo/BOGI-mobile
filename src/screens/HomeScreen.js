@@ -5,6 +5,7 @@ import {
   Modal, ScrollView, Alert, Linking,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 import { COLORS } from "../constants/colors";
 import GameCard, { getGenreStyle, safeImageUrl } from "../components/GameCard";
@@ -26,6 +27,23 @@ function SectionHeader({ title, sub }) {
         <Text style={s.sectionTitle}>{title}</Text>
       </View>
       {sub ? <Text style={s.sectionSub}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+function CollectionSectionHeader({ title, sub, onSeeAll }) {
+  return (
+    <View style={{ marginBottom: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={s.accentBar} />
+          <Text style={s.sectionTitle}>{title}</Text>
+        </View>
+        {sub ? <Text style={s.sectionSub}>{sub}</Text> : null}
+      </View>
+      <TouchableOpacity onPress={onSeeAll} hitSlop={8} style={{ paddingVertical: 4 }}>
+        <Text style={s.seeAllText}>전체보기 →</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -236,6 +254,7 @@ function SubmitGameModal({ visible, onClose, session }) {
 
 export default function HomeScreen({ session }) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
 
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -244,6 +263,7 @@ export default function HomeScreen({ session }) {
   const [gameStats, setGameStats] = useState({});
   const [bogiTop, setBogiTop] = useState([]);
   const [bggTop, setBggTop] = useState([]);
+  const [collections, setCollections] = useState([]);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
 
   const refreshReviewSummary = useCallback(async () => {
@@ -347,6 +367,42 @@ export default function HomeScreen({ session }) {
     else setReviewSummary({});
   }, [session, refreshReviewSummary]);
 
+  // 컬렉션은 실패해도 나머지 홈 화면에 영향 없도록 별도 effect로 분리
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: cols, error: colErr } = await supabase
+          .from("collections")
+          .select("*")
+          .eq("is_published", true)
+          .order("sort_order");
+        if (colErr || !cols?.length) { setCollections([]); return; }
+
+        const { data: cgRows, error: cgErr } = await supabase
+          .from("collection_games")
+          .select("collection_id, sort_order, note, games(*)")
+          .order("sort_order");
+        if (cgErr) { setCollections([]); return; }
+
+        const byCollection = {};
+        (cgRows || []).forEach((row) => {
+          if (!row.games) return;
+          if (!byCollection[row.collection_id]) byCollection[row.collection_id] = [];
+          byCollection[row.collection_id].push({ game: row.games, note: row.note });
+        });
+
+        const withGames = cols
+          .map((c) => ({ ...c, items: byCollection[c.id] || [] }))
+          .filter((c) => c.items.length > 0);
+
+        setCollections(withGames);
+      } catch (err) {
+        console.warn("[HomeScreen] 컬렉션 로딩 실패:", err);
+        setCollections([]);
+      }
+    })();
+  }, []);
+
   const Header = (
     <View style={[s.homeHeader, { paddingTop: insets.top }]}>
       <Text style={s.logoText}>BOGI</Text>
@@ -363,37 +419,6 @@ export default function HomeScreen({ session }) {
 
   const ListHeader = (
     <View style={{ paddingTop: 8 }}>
-      {!loading && bggTop.length > 0 && (
-        <View style={s.section}>
-          <SectionHeader title="🌍 BGG 글로벌 TOP" sub={`bgg_rank 기준 TOP ${bggTop.length}`} />
-          <FlatList
-            data={bggTop}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(item) => item.id.toString()}
-            contentContainerStyle={{ gap: 10, paddingRight: 4 }}
-            renderItem={({ item, index }) => (
-              <RankedGameCard
-                rank={index + 1}
-                game={item}
-                session={session}
-                reviewSummary={reviewSummary[item.id] || null}
-                gameStat={gameStats[item.id] || null}
-                onReviewSaved={refreshReviewSummary}
-                badgeColor={index < 3 ? RANK_COLORS[index] : "#9ca3af"}
-                onGameAdd={session ? () => setShowSubmitModal(true) : null}
-              />
-            )}
-          />
-          <TouchableOpacity
-            onPress={() => Linking.openURL("https://boardgamegeek.com")}
-            style={s.bggBadge}
-          >
-            <Text style={s.bggBadgeText}>Powered by BGG</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       {!loading && (
         <View style={s.section}>
           <SectionHeader
@@ -426,6 +451,65 @@ export default function HomeScreen({ session }) {
               <Text style={s.emptyText}>아직 평가가 충분하지 않아요. 첫 평가를 남겨보세요!</Text>
             </View>
           )}
+        </View>
+      )}
+
+      {!loading && collections.map((c) => (
+        <View key={c.id} style={s.section}>
+          <CollectionSectionHeader
+            title={c.title}
+            sub={c.subtitle}
+            onSeeAll={() => navigation.navigate("CollectionDetail", { slug: c.slug })}
+          />
+          <FlatList
+            data={c.items}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item) => item.game.id.toString()}
+            contentContainerStyle={{ gap: 10, paddingRight: 4 }}
+            renderItem={({ item }) => (
+              <GameCard
+                game={item.game}
+                session={session}
+                reviewSummary={reviewSummary[item.game.id] || null}
+                gameStat={gameStats[item.game.id] || null}
+                onReviewSaved={refreshReviewSummary}
+                cardWidth={RANK_CARD_W}
+                onGameAdd={session ? () => setShowSubmitModal(true) : null}
+              />
+            )}
+          />
+        </View>
+      ))}
+
+      {!loading && bggTop.length > 0 && (
+        <View style={s.section}>
+          <SectionHeader title="🌍 BGG 글로벌 TOP" sub={`bgg_rank 기준 TOP ${bggTop.length}`} />
+          <FlatList
+            data={bggTop}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={{ gap: 10, paddingRight: 4 }}
+            renderItem={({ item, index }) => (
+              <RankedGameCard
+                rank={index + 1}
+                game={item}
+                session={session}
+                reviewSummary={reviewSummary[item.id] || null}
+                gameStat={gameStats[item.id] || null}
+                onReviewSaved={refreshReviewSummary}
+                badgeColor={index < 3 ? RANK_COLORS[index] : "#9ca3af"}
+                onGameAdd={session ? () => setShowSubmitModal(true) : null}
+              />
+            )}
+          />
+          <TouchableOpacity
+            onPress={() => Linking.openURL("https://boardgamegeek.com")}
+            style={s.bggBadge}
+          >
+            <Text style={s.bggBadgeText}>Powered by BGG</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -552,6 +636,7 @@ const s = StyleSheet.create({
   accentBar: { width: 3, height: 20, borderRadius: 2, backgroundColor: COLORS.accent, marginRight: 8 },
   sectionTitle: { fontSize: 18, fontWeight: "800", color: COLORS.text, letterSpacing: -0.3 },
   sectionSub: { fontSize: 12, color: COLORS.sub, marginTop: 3, marginLeft: 11 },
+  seeAllText: { fontSize: 12, fontWeight: "700", color: COLORS.accent },
   bggBadge: {
     alignSelf: "flex-start",
     marginTop: 10,
