@@ -3,14 +3,15 @@
  *
  * 추가 설치 불필요 (이미 설치됨: @supabase/supabase-js, xml2js)
  *
- * 실행:
- *   SUPABASE_SERVICE_KEY=eyJ... node import_bgg_top_games.js
+ * 실행 (.env에 SUPABASE_SERVICE_KEY, BGG_API_TOKEN 필요):
+ *   node import_bgg_top_games.js
  *
  * 중간에 끊겨도 재실행 시 이미 추가된 게임은 건너뜀 (name_en / bgg_rank 중복 체크)
  */
 
 'use strict';
 
+require('dotenv/config');
 const https = require('https');
 const http = require('http');
 const xml2js = require('xml2js');
@@ -20,7 +21,6 @@ const { createClient } = require('@supabase/supabase-js');
 const SUPABASE_URL = 'https://nwvyezccwzkpyqiqaejk.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const STORAGE_BUCKET = 'game-images';
-const BGG_AUTH = 'Bearer 002f773e-5bd8-43c1-8964-ed078f044681';
 const BGG_BATCH_SIZE = 20;   // 한 번에 조회할 BGG ID 수
 const DELAY_BGG = 3000;      // BGG API 요청 간 딜레이 (ms)
 const DELAY_IMG = 1000;      // Storage 업로드 간 딜레이 (ms)
@@ -29,9 +29,15 @@ const MAX_RETRY = 3;
 
 if (!SUPABASE_KEY) {
   console.error('❌ SUPABASE_SERVICE_KEY 환경변수를 설정해주세요.');
-  console.error('   SUPABASE_SERVICE_KEY=eyJ... node import_bgg_top_games.js');
+  console.error('   .env에 SUPABASE_SERVICE_KEY=eyJ... 추가 후 다시 실행하세요.');
   process.exit(1);
 }
+if (!process.env.BGG_API_TOKEN) {
+  console.error('❌ BGG_API_TOKEN 환경변수를 설정해주세요.');
+  console.error('   .env에 BGG_API_TOKEN=xxx 추가 후 다시 실행하세요. (.env.example 참고)');
+  process.exit(1);
+}
+const BGG_AUTH = `Bearer ${process.env.BGG_API_TOKEN}`;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const STORAGE_PREFIX = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/`;

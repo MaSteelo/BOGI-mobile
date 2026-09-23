@@ -1,3 +1,4 @@
+require('dotenv/config');
 const { createClient } = require('@supabase/supabase-js');
 const https = require('https');
 const http = require('http');
@@ -5,11 +6,17 @@ const http = require('http');
 const SUPABASE_URL = 'https://nwvyezccwzkpyqiqaejk.supabase.co';
 const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53dnllemNjd3prcHlxaXFhZWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNTA4MTUsImV4cCI6MjA5MzkyNjgxNX0.eHvEbiwJYdWADXeY30sMLcaXmoxO3CKTMsvmMoUh7bY';
-// service role key는 RLS를 우회 — 환경변수로 주입: SUPABASE_SERVICE_KEY=xxx node fetch_bgg_images.js
+// service role key는 RLS를 우회 — 환경변수로 주입: .env에 SUPABASE_SERVICE_KEY=xxx
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY;
-const BGG_AUTH = 'Bearer 002f773e-5bd8-43c1-8964-ed078f044681';
 const STORAGE_BUCKET = 'game-images';
 const STORAGE_PUBLIC_PREFIX = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/`;
+
+if (!process.env.BGG_API_TOKEN) {
+  console.error('❌ BGG_API_TOKEN 환경변수를 설정해주세요.');
+  console.error('   .env에 BGG_API_TOKEN=xxx 추가 후 다시 실행하세요. (.env.example 참고)');
+  process.exit(1);
+}
+const BGG_AUTH = `Bearer ${process.env.BGG_API_TOKEN}`;
 
 if (process.env.SUPABASE_SERVICE_KEY) {
   console.log('service role key 사용 (RLS 우회)\n');
