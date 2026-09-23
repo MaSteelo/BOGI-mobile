@@ -353,17 +353,35 @@ export default function AdminScreen({ session, profile }) {
     } else if (mainTab === "reports") {
       const { data: rows, error } = await supabase
         .from("reports")
-        .select("id, review_id, reporter_id, reason, detail, status, created_at, reviews(memo, total_score)")
+        .select("id, review_id, reporter_id, reason, detail, status, created_at, reviews(game_id, memo, total_score, user_id)")
         .eq("status", statusTab)
         .order("created_at", { ascending: statusTab === "pending" });
       if (error) console.warn("[AdminScreen] reports 오류:", error.message);
       const rrows = rows ?? [];
       if (rrows.length > 0) {
-        const reporterIds = [...new Set(rrows.map((r) => r.reporter_id))];
-        const { data: profilesData } = await supabase.from("profiles").select("id, nickname").in("id", reporterIds);
+        const userIds = [...new Set([
+          ...rrows.map((r) => r.reporter_id),
+          ...rrows.map((r) => r.reviews?.user_id).filter(Boolean),
+        ])];
+        const gameIds = [...new Set(rrows.map((r) => r.reviews?.game_id).filter(Boolean))];
+
+        const [{ data: profilesData }, { data: gamesData }] = await Promise.all([
+          supabase.from("profiles").select("id, nickname").in("id", userIds),
+          gameIds.length > 0
+            ? supabase.from("games").select("id, name_ko").in("id", gameIds)
+            : Promise.resolve({ data: [] }),
+        ]);
         const nickMap = {};
         profilesData?.forEach((p) => { nickMap[p.id] = p.nickname; });
-        setReports(rrows.map((r) => ({ ...r, reporterNickname: nickMap[r.reporter_id] || "알 수 없음" })));
+        const gameNameMap = {};
+        gamesData?.forEach((g) => { gameNameMap[g.id] = g.name_ko; });
+
+        setReports(rrows.map((r) => ({
+          ...r,
+          reporterNickname: nickMap[r.reporter_id] || "알 수 없음",
+          reviewAuthorNickname: r.reviews?.user_id ? (nickMap[r.reviews.user_id] || "알 수 없음") : null,
+          gameName: r.reviews?.game_id ? (gameNameMap[r.reviews.game_id] || "알 수 없는 게임") : null,
+        })));
       } else {
         setReports([]);
       }
@@ -729,17 +747,43 @@ export default function AdminScreen({ session, profile }) {
               />
             ) : mainTab === "reports" ? (
               <View style={{ backgroundColor: COLORS.surface, borderRadius: 12, marginHorizontal: 12, marginBottom: 10, padding: 16, borderWidth: 1, borderColor: COLORS.border }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                  <Text style={{ fontWeight: "700", fontSize: 13, color: COLORS.text, flex: 1, marginRight: 8 }}>{item.reason}</Text>
-                  <Text style={{ fontSize: 11, color: COLORS.subLight }}>{item.created_at?.slice(0, 10)}</Text>
+                {/* 상단: 게임명 + 신고 일시 */}
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                  <Text style={{ fontWeight: "800", fontSize: 15, color: COLORS.text, flex: 1, marginRight: 8 }}>
+                    {item.gameName ?? "게임 정보 없음"}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: COLORS.subLight }}>
+                    {item.created_at ? new Date(item.created_at).toLocaleString("ko-KR") : ""}
+                  </Text>
                 </View>
-                {item.detail ? <Text style={{ fontSize: 12, color: COLORS.sub, marginBottom: 6 }}>{item.detail}</Text> : null}
-                <Text style={{ fontSize: 11, color: COLORS.subLight, marginBottom: item.reviews?.memo ? 8 : 0 }}>신고자: {item.reporterNickname}</Text>
-                {item.reviews?.memo ? (
-                  <View style={{ backgroundColor: COLORS.bg, borderRadius: 8, padding: 10, marginBottom: 10 }}>
-                    <Text style={{ fontSize: 12, color: COLORS.sub }}>{item.reviews.memo.slice(0, 100)}{item.reviews.memo.length > 100 ? "..." : ""}</Text>
+
+                {/* 신고 사유 */}
+                <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                  <View style={{ backgroundColor: COLORS.accentLight, paddingHorizontal: 9, paddingVertical: 2, borderRadius: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.accent }}>🚩 {item.reason}</Text>
                   </View>
-                ) : null}
+                  {item.detail ? <Text style={{ fontSize: 12, color: COLORS.sub }}>{item.detail}</Text> : null}
+                </View>
+
+                {/* 신고된 리뷰 전문 */}
+                {item.reviews?.memo ? (
+                  <View style={{ backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.subLight, marginBottom: 6 }}>
+                      신고된 리뷰 · 작성자 {item.reviewAuthorNickname ?? "알 수 없음"}
+                    </Text>
+                    <Text style={{ fontSize: 13, color: COLORS.text, lineHeight: 19 }}>{item.reviews.memo}</Text>
+                  </View>
+                ) : (
+                  <Text style={{ fontSize: 12, color: COLORS.subLight, marginBottom: 10 }}>
+                    리뷰 내용이 없습니다. (삭제되었을 수 있어요)
+                  </Text>
+                )}
+
+                {/* 신고자 */}
+                <Text style={{ fontSize: 11, color: COLORS.subLight, marginBottom: statusTab === "pending" ? 10 : 0 }}>
+                  신고자: {item.reporterNickname}
+                </Text>
+
                 {statusTab === "pending" && (
                   <View style={{ gap: 8 }}>
                     <View style={{ flexDirection: "row", gap: 8 }}>

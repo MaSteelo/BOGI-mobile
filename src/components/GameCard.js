@@ -118,9 +118,8 @@ function ReportModal({ reviewId, session, onClose }) {
   };
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 20 }}>
-        <View style={{ backgroundColor: "#fff", borderRadius: 16, width: "100%", maxWidth: 340, padding: 24 }}>
+    <View style={s.reportOverlay}>
+      <View style={{ backgroundColor: "#fff", borderRadius: 16, width: "100%", maxWidth: 340, padding: 24 }}>
           {done ? (
             <View style={{ alignItems: "center", paddingVertical: 16 }}>
               <Text style={{ fontSize: 36, marginBottom: 12 }}>✅</Text>
@@ -164,8 +163,7 @@ function ReportModal({ reviewId, session, onClose }) {
             </>
           )}
         </View>
-      </View>
-    </Modal>
+    </View>
   );
 }
 
@@ -857,12 +855,22 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
                                 if (vals.length === 0) return null;
                                 const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
                                 return (
-                                  <View key={key} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                                    <Text style={{ fontSize: 11, color: COLORS.sub, width: 44 }}>{label}</Text>
+                                  <View key={key} style={{ flexDirection: "row", flexWrap: "nowrap", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                    <Text
+                                      style={{ fontSize: 11, color: COLORS.sub, width: 44, flexShrink: 0 }}
+                                      numberOfLines={1}
+                                    >
+                                      {label}
+                                    </Text>
                                     <View style={{ flex: 1, height: 5, backgroundColor: COLORS.border, borderRadius: 3, overflow: "hidden" }}>
                                       <View style={{ width: `${(avg / 5) * 100}%`, height: "100%", backgroundColor: COLORS.accent, borderRadius: 3 }} />
                                     </View>
-                                    <Text style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700", width: 26, textAlign: "right" }}>★{avg.toFixed(1)}</Text>
+                                    <Text
+                                      style={{ fontSize: 11, color: COLORS.accent, fontWeight: "700", minWidth: 28, flexShrink: 0, textAlign: "right" }}
+                                      numberOfLines={1}
+                                    >
+                                      ★{avg.toFixed(1)}
+                                    </Text>
                                   </View>
                                 );
                               })
@@ -1281,6 +1289,18 @@ const s = StyleSheet.create({
   },
   loadMoreBtnText: { fontSize: 12, fontWeight: "600", color: COLORS.sub },
   emptyText: { fontSize: 13, color: COLORS.subLight, textAlign: "center", paddingVertical: 16 },
+
+  // ── 신고 모달 오버레이 (별도 Modal 없이 렌더링: 중첩 Modal은 터치가 씹힘) ──
+  reportOverlay: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+    zIndex: 50,
+    elevation: 50,
+  },
 
   // ── 편집 패널 오버레이 ──
   editOverlay: {
