@@ -5,6 +5,12 @@
 //
 // .env에 다음 환경변수 필요 (.env.example 참고):
 //   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, BGG_API_TOKEN
+//
+// 실행 예시:
+//   1) 프로젝트 루트 .env에 값 채우기 (.env.example 복사 후 채우면 됨)
+//   2) node upload_game_image.js a1b2c3d4 --bgg 174430
+//      node upload_game_image.js a1b2c3d4 --url https://example.com/cover.jpg
+//      node upload_game_image.js a1b2c3d4 --file ./local-cover.jpg
 
 require('dotenv/config');
 const { createClient } = require('@supabase/supabase-js');
