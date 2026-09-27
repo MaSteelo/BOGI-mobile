@@ -2,7 +2,7 @@ export default {
   expo: {
     name: "BOGI",
     slug: "bogi",
-    version: "1.0.0",
+    version: "1.1.0",
     sdkVersion: "54.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
@@ -15,7 +15,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.ibogi.bogiapp",
-      buildNumber: "5",
+      buildNumber: "6",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },
@@ -26,7 +26,7 @@ export default {
         backgroundColor: "#1e643c",
       },
       package: "com.bogi.app",
-      versionCode: 5,
+      versionCode: 6,
     },
     web: {
       favicon: "./assets/favicon.png",
