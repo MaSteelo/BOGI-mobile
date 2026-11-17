@@ -1,6 +1,8 @@
+const IS_DEV = process.env.APP_VARIANT === "development";
+
 export default {
   expo: {
-    name: "BOGI",
+    name: IS_DEV ? "BOGI Dev" : "BOGI",
     slug: "bogi",
     version: "1.1.0",
     sdkVersion: "54.0.0",
@@ -14,7 +16,7 @@ export default {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.ibogi.bogiapp",
+      bundleIdentifier: IS_DEV ? "com.ibogi.bogiapp.dev" : "com.ibogi.bogiapp",
       buildNumber: "6",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
@@ -25,7 +27,7 @@ export default {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#1e643c",
       },
-      package: "com.bogi.app",
+      package: IS_DEV ? "com.bogi.app.dev" : "com.bogi.app",
       versionCode: 6,
     },
     web: {

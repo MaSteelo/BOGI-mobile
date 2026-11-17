@@ -72,7 +72,7 @@ export default function TabNavigator({ session, profile }) {
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Home">
-        {() => <HomeScreen session={session} />}
+        {() => <HomeScreen session={session} profile={profile} />}
       </Tab.Screen>
       <Tab.Screen name="Search">
         {() => <SearchScreen session={session} />}

@@ -4,6 +4,7 @@ import {
   Text,
   TouchableOpacity,
   FlatList,
+  ScrollView,
   StyleSheet,
   ActivityIndicator,
   Dimensions,
@@ -14,6 +15,7 @@ import { supabase } from "../lib/supabase";
 import GameCard from "../components/GameCard";
 import NotificationBell from "../components/NotificationBell";
 import SettingsScreen from "./SettingsScreen";
+import { buildTasteProfile, buildTasteSummary } from "../lib/recommend";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const PADDING = 16;
@@ -226,7 +228,13 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
 
   const nickname = profile?.nickname || "사용자";
 
-  const ListHeader = (
+  const tasteProfile = useMemo(() => buildTasteProfile(reviews), [reviews]);
+  const tasteSummary = useMemo(
+    () => buildTasteSummary(tasteProfile, nickname),
+    [tasteProfile, nickname]
+  );
+
+  const ProfileHeader = (
     <View>
       {/* Profile */}
       <View style={styles.profileSection}>
@@ -292,22 +300,6 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
         </TouchableOpacity>
       </View>
 
-      {loading && (
-        <View style={styles.center}>
-          <ActivityIndicator color={COLORS.accent} />
-        </View>
-      )}
-
-      {activeTab === "analytics" && !loading && (
-        <View style={{ paddingHorizontal: PADDING, paddingBottom: 20, gap: 12 }}>
-          <RatingChart reviews={reviews} />
-          <GenreChips reviews={reviews} />
-          <MonthlyChart reviews={reviews} />
-          {reviews.length === 0 && (
-            <Text style={styles.emptyText}>아직 기록이 없어요 😅</Text>
-          )}
-        </View>
-      )}
     </View>
   );
 
@@ -329,27 +321,55 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
         onProfileUpdate={handleProfileUpdate}
       />
 
-      <FlatList
-        data={activeTab === "records" ? reviewedGames : []}
-        keyExtractor={(item) => item.id}
-        renderItem={renderGame}
-        numColumns={3}
-        ListHeaderComponent={ListHeader}
-        contentContainerStyle={styles.listContent}
-        columnWrapperStyle={
-          activeTab === "records" && reviewedGames.length > 0
-            ? styles.columnWrapper
-            : undefined
-        }
-        ListEmptyComponent={
-          !loading && activeTab === "records" ? (
+      {activeTab === "analytics" ? (
+        <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+          {ProfileHeader}
+          {loading ? (
             <View style={styles.center}>
-              <Text style={styles.emptyText}>기록한 게임이 없어요 😅</Text>
+              <ActivityIndicator color={COLORS.accent} />
             </View>
-          ) : null
-        }
-        showsVerticalScrollIndicator={false}
-      />
+          ) : (
+            <View style={{ paddingHorizontal: PADDING, paddingBottom: 20, gap: 12 }}>
+              <View style={styles.tasteSummaryBox}>
+                <Text style={styles.tasteSummaryText}>{tasteSummary}</Text>
+              </View>
+              <RatingChart reviews={reviews} />
+              <GenreChips reviews={reviews} />
+              <MonthlyChart reviews={reviews} />
+              {reviews.length === 0 && (
+                <Text style={styles.emptyText}>아직 기록이 없어요 😅</Text>
+              )}
+            </View>
+          )}
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={reviewedGames}
+          keyExtractor={(item) => item.id}
+          renderItem={renderGame}
+          numColumns={3}
+          ListHeaderComponent={
+            <>
+              {ProfileHeader}
+              {loading && (
+                <View style={styles.center}>
+                  <ActivityIndicator color={COLORS.accent} />
+                </View>
+              )}
+            </>
+          }
+          contentContainerStyle={styles.listContent}
+          columnWrapperStyle={reviewedGames.length > 0 ? styles.columnWrapper : undefined}
+          ListEmptyComponent={
+            !loading ? (
+              <View style={styles.center}>
+                <Text style={styles.emptyText}>기록한 게임이 없어요 😅</Text>
+              </View>
+            ) : null
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </View>
   );
 }
@@ -425,6 +445,14 @@ const styles = StyleSheet.create({
   columnWrapper: { gap: GAP, marginBottom: GAP },
   center: { alignItems: "center", paddingVertical: 32 },
   emptyText: { fontSize: 14, color: COLORS.sub, textAlign: "center" },
+  tasteSummaryBox: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    padding: 16,
+  },
+  tasteSummaryText: { fontSize: 13, color: COLORS.text, lineHeight: 19 },
   chartCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 12,

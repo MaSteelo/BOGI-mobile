@@ -10,6 +10,7 @@ import { supabase } from "../lib/supabase";
 import { COLORS } from "../constants/colors";
 import GameCard, { getGenreStyle, safeImageUrl } from "../components/GameCard";
 import NotificationBell from "../components/NotificationBell";
+import { recommendGames, MIN_REVIEWS_FOR_RECOMMENDATION } from "../lib/recommend";
 
 const { width: SW } = Dimensions.get("window");
 const PADDING = 12;
@@ -252,7 +253,7 @@ function SubmitGameModal({ visible, onClose, session }) {
   );
 }
 
-export default function HomeScreen({ session }) {
+export default function HomeScreen({ session, profile }) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
 
@@ -264,6 +265,7 @@ export default function HomeScreen({ session }) {
   const [bogiTop, setBogiTop] = useState([]);
   const [bggTop, setBggTop] = useState([]);
   const [collections, setCollections] = useState([]);
+  const [recommendations, setRecommendations] = useState([]); // 개인화 추천
   const [showSubmitModal, setShowSubmitModal] = useState(false);
 
   const refreshReviewSummary = useCallback(async () => {
@@ -289,7 +291,7 @@ export default function HomeScreen({ session }) {
         const [gamesRes, reviewsRes] = await Promise.all([
           supabase
             .from("games")
-            .select("id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, min_age, genre")
+            .select("id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, min_age, genre, status")
             .eq("status", "approved")
             .order("name_ko"),
           supabase.from("reviews").select("game_id, total_score").not("total_score", "is", null),
@@ -403,6 +405,27 @@ export default function HomeScreen({ session }) {
     })();
   }, []);
 
+  // 개인화 추천도 실패해도 나머지 홈 화면에 영향 없도록 별도 effect로 분리
+  useEffect(() => {
+    if (!session || games.length === 0) { setRecommendations([]); return; }
+    (async () => {
+      try {
+        const { data: myReviewRows, error } = await supabase
+          .from("reviews")
+          .select("game_id, total_score")
+          .eq("user_id", session.user.id);
+        if (error || !myReviewRows || myReviewRows.length < MIN_REVIEWS_FOR_RECOMMENDATION) {
+          setRecommendations([]);
+          return;
+        }
+        setRecommendations(recommendGames({ games, reviews: myReviewRows, count: 10 }));
+      } catch (err) {
+        console.warn("[HomeScreen] 추천 로딩 실패:", err);
+        setRecommendations([]);
+      }
+    })();
+  }, [session, games]);
+
   const Header = (
     <View style={[s.homeHeader, { paddingTop: insets.top }]}>
       <Text style={s.logoText}>BOGI</Text>
@@ -419,6 +442,33 @@ export default function HomeScreen({ session }) {
 
   const ListHeader = (
     <View style={{ paddingTop: 8 }}>
+      {!loading && recommendations.length > 0 && (
+        <View style={s.section}>
+          <SectionHeader
+            title="🎯 취향저격 추천"
+            sub={`${profile?.nickname || "회원"}님의 기록을 바탕으로 골랐어요`}
+          />
+          <FlatList
+            data={recommendations}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={{ gap: 10, paddingRight: 4 }}
+            renderItem={({ item }) => (
+              <GameCard
+                game={item}
+                session={session}
+                reviewSummary={reviewSummary[item.id] || null}
+                gameStat={gameStats[item.id] || null}
+                onReviewSaved={refreshReviewSummary}
+                cardWidth={RANK_CARD_W}
+                onGameAdd={session ? () => setShowSubmitModal(true) : null}
+              />
+            )}
+          />
+        </View>
+      )}
+
       {!loading && (
         <View style={s.section}>
           <SectionHeader
