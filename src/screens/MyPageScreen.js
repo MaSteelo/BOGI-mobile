@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -8,8 +8,10 @@ import {
   StyleSheet,
   ActivityIndicator,
   Dimensions,
+  RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { COLORS } from "../constants/colors";
 import { supabase } from "../lib/supabase";
 import GameCard from "../components/GameCard";
@@ -153,6 +155,7 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("records");
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (isOwnPage && ownProfile) setProfile(ownProfile);
@@ -178,7 +181,7 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
     loadReviews();
   }, [uid]);
 
-  const loadReviews = async () => {
+  const loadReviews = useCallback(async () => {
     if (!uid) return;
     setLoading(true);
     const { data, error } = await supabase
@@ -188,10 +191,24 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
       .not("total_score", "is", null)
       .order("created_at", { ascending: false });
     if (error) console.warn("[MyPageScreen] 리뷰 오류:", error.message);
-    console.log("[MyPageScreen] 리뷰 수:", data?.length);
     setReviews(data ?? []);
     setLoading(false);
-  };
+  }, [uid]);
+
+  // 마이페이지 탭에 다시 들어올 때마다 조용히 재조회 (최초 진입은 위 effect가 이미 처리)
+  const isFirstMyPageFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (isFirstMyPageFocus.current) { isFirstMyPageFocus.current = false; return; }
+      loadReviews();
+    }, [loadReviews])
+  );
+
+  const onPullRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadReviews();
+    setRefreshing(false);
+  }, [loadReviews]);
 
   const stats = useMemo(() => {
     if (reviews.length === 0) return { count: 0, avg: "-", favoriteGenre: "-" };
@@ -322,7 +339,13 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
       />
 
       {activeTab === "analytics" ? (
-        <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} tintColor={COLORS.accent} colors={[COLORS.accent]} />
+          }
+        >
           {ProfileHeader}
           {loading ? (
             <View style={styles.center}>
@@ -368,6 +391,9 @@ export default function MyPageScreen({ session, profile: ownProfile, isOwnPage =
             ) : null
           }
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} tintColor={COLORS.accent} colors={[COLORS.accent]} />
+          }
         />
       )}
     </View>

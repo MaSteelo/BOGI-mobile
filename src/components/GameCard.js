@@ -198,7 +198,7 @@ function EditField({ label, value, onChangeText, placeholder, keyboardType, auto
   );
 }
 
-export default function GameCard({ game, session, reviewSummary, gameStat, onReviewSaved, cardWidth }) {
+export default function GameCard({ game, session, reviewSummary, gameStat, onReviewSaved, cardWidth, playCount }) {
   const genreStyle = getGenreStyle(game.genre);
   const imageUrl = safeImageUrl(game.image_url);
   const [imgError, setImgError] = useState(false);
@@ -533,6 +533,11 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
               <Text style={s.scoreBadgeText}>
                 {reviewSummary.latestScore ? `⭐ ${reviewSummary.latestScore.toFixed(1)}` : `⭐ ${reviewSummary.count}회`}
               </Text>
+            </View>
+          )}
+          {playCount != null && (
+            <View style={s.playCountBadge}>
+              <Text style={s.playCountBadgeText}>🔥 {playCount}회 플레이</Text>
             </View>
           )}
         </View>
@@ -1082,6 +1087,12 @@ const s = StyleSheet.create({
     borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2,
   },
   scoreBadgeText: { fontSize: 8, fontWeight: "700", color: "#fff" },
+  playCountBadge: {
+    position: "absolute", bottom: 5, left: 5,
+    backgroundColor: "rgba(30,100,60,0.88)",
+    borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2,
+  },
+  playCountBadgeText: { fontSize: 8, fontWeight: "700", color: "#fff" },
   cardInfo: { padding: 6 },
   cardName: { fontSize: 10, fontWeight: "700", color: COLORS.text, marginBottom: 2 },
   cardSub: { fontSize: 9, color: COLORS.sub },

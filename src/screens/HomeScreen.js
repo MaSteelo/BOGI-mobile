@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View, Text, TextInput, FlatList, StyleSheet,
   ActivityIndicator, TouchableOpacity, Image, Dimensions,
-  Modal, ScrollView, Alert, Linking,
+  Modal, ScrollView, Alert, Linking, RefreshControl,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 import { COLORS } from "../constants/colors";
 import GameCard, { getGenreStyle, safeImageUrl } from "../components/GameCard";
@@ -266,7 +266,9 @@ export default function HomeScreen({ session, profile }) {
   const [bggTop, setBggTop] = useState([]);
   const [collections, setCollections] = useState([]);
   const [recommendations, setRecommendations] = useState([]); // 개인화 추천
+  const [mostPlayed, setMostPlayed] = useState([]); // 많이 플레이한 게임
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const refreshReviewSummary = useCallback(async () => {
     if (!session) return;
@@ -284,85 +286,93 @@ export default function HomeScreen({ session, profile }) {
     setReviewSummary(map);
   }, [session]);
 
+  // games / BOGI TOP / 커뮤니티 통계 — 리뷰 변경·탭 재진입·당겨서 새로고침 시 다시 불러올 수 있도록 함수로 분리
+  const loadGames = useCallback(async () => {
+    try {
+      const [gamesRes, reviewsRes] = await Promise.all([
+        supabase
+          .from("games")
+          .select("id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, min_age, genre, status")
+          .eq("status", "approved")
+          .order("name_ko"),
+        supabase.from("reviews").select("game_id, total_score").not("total_score", "is", null),
+      ]);
+
+      if (gamesRes.error) {
+        setLoadError(`games 조회 오류: ${gamesRes.error.message} (code: ${gamesRes.error.code})`);
+        return;
+      }
+
+      if (!gamesRes.data || gamesRes.data.length === 0) {
+        console.warn("[HomeScreen] games 결과 0개 — status 필터 없이 재시도");
+        const fallback = await supabase.from("games").select("id, name_ko").limit(3);
+        if (fallback.error) {
+          setLoadError(`RLS 차단 가능성: ${fallback.error.message}`);
+        } else if (!fallback.data?.length) {
+          setLoadError("games 테이블이 비어 있거나 RLS가 비로그인 조회를 차단하고 있습니다.");
+        } else {
+          setLoadError("status='approved'인 게임이 없습니다.");
+        }
+        return;
+      }
+
+      setLoadError(null);
+      const allGames = gamesRes.data;
+      setGames(allGames);
+
+      const bgg = allGames
+        .filter((g) => g.bgg_rank != null)
+        .sort((a, b) => a.bgg_rank - b.bgg_rank)
+        .slice(0, 10);
+      setBggTop(bgg);
+
+      if (reviewsRes.data?.length > 0) {
+        const gamesById = {};
+        allGames.forEach((g) => { gamesById[g.id] = g; });
+        const agg = {};
+        reviewsRes.data.forEach((r) => {
+          if (!agg[r.game_id]) agg[r.game_id] = { sum: 0, count: 0 };
+          agg[r.game_id].sum += r.total_score;
+          agg[r.game_id].count += 1;
+        });
+        const stats = {};
+        Object.entries(agg).forEach(([id, { sum, count }]) => {
+          stats[id] = { avg: sum / count, count };
+        });
+        setGameStats(stats);
+        const top = Object.entries(agg)
+          .filter(([id]) => gamesById[id])
+          .map(([id, { sum, count }]) => ({ game: gamesById[id], avg: sum / count, count }))
+          .sort((a, b) => b.avg - a.avg || b.count - a.count)
+          .slice(0, 10);
+        setBogiTop(top);
+      } else {
+        setGameStats({});
+        setBogiTop([]);
+      }
+    } catch (e) {
+      console.error("[HomeScreen] 예외 발생:", e);
+      setLoadError(`예외: ${e.message}`);
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
-      console.log("[HomeScreen] 데이터 로딩 시작");
-      try {
-        const [gamesRes, reviewsRes] = await Promise.all([
-          supabase
-            .from("games")
-            .select("id, name_ko, name_en, bgg_rank, image_url, min_players, max_players, play_minutes, min_age, genre, status")
-            .eq("status", "approved")
-            .order("name_ko"),
-          supabase.from("reviews").select("game_id, total_score").not("total_score", "is", null),
-        ]);
-
-        console.log("[HomeScreen] games 응답:", {
-          count: gamesRes.data?.length ?? 0,
-          error: gamesRes.error?.message ?? null,
-          status: gamesRes.status,
-        });
-
-        if (gamesRes.error) {
-          setLoadError(`games 조회 오류: ${gamesRes.error.message} (code: ${gamesRes.error.code})`);
-          setLoading(false);
-          return;
-        }
-
-        if (!gamesRes.data || gamesRes.data.length === 0) {
-          console.warn("[HomeScreen] games 결과 0개 — status 필터 없이 재시도");
-          const fallback = await supabase.from("games").select("id, name_ko").limit(3);
-          if (fallback.error) {
-            setLoadError(`RLS 차단 가능성: ${fallback.error.message}`);
-          } else if (!fallback.data?.length) {
-            setLoadError("games 테이블이 비어 있거나 RLS가 비로그인 조회를 차단하고 있습니다.");
-          } else {
-            setLoadError("status='approved'인 게임이 없습니다.");
-          }
-          setLoading(false);
-          return;
-        }
-
-        const allGames = gamesRes.data;
-        console.log("[HomeScreen] 게임 로드:", allGames.length, "개");
-        setGames(allGames);
-
-        const bgg = allGames
-          .filter((g) => g.bgg_rank != null)
-          .sort((a, b) => a.bgg_rank - b.bgg_rank)
-          .slice(0, 10);
-        setBggTop(bgg);
-
-        if (reviewsRes.data?.length > 0) {
-          const gamesById = {};
-          allGames.forEach((g) => { gamesById[g.id] = g; });
-          const agg = {};
-          reviewsRes.data.forEach((r) => {
-            if (!agg[r.game_id]) agg[r.game_id] = { sum: 0, count: 0 };
-            agg[r.game_id].sum += r.total_score;
-            agg[r.game_id].count += 1;
-          });
-          const stats = {};
-          Object.entries(agg).forEach(([id, { sum, count }]) => {
-            stats[id] = { avg: sum / count, count };
-          });
-          setGameStats(stats);
-          const top = Object.entries(agg)
-            .filter(([id]) => gamesById[id])
-            .map(([id, { sum, count }]) => ({ game: gamesById[id], avg: sum / count, count }))
-            .sort((a, b) => b.avg - a.avg || b.count - a.count)
-            .slice(0, 10);
-          setBogiTop(top);
-        }
-
-        setLoading(false);
-      } catch (e) {
-        console.error("[HomeScreen] 예외 발생:", e);
-        setLoadError(`예외: ${e.message}`);
-        setLoading(false);
-      }
+      setLoading(true);
+      await loadGames();
+      setLoading(false);
     })();
-  }, []);
+  }, [loadGames]);
+
+  // 홈 탭에 다시 들어올 때마다 조용히 재조회 (최초 진입은 위 effect가 이미 처리)
+  const isFirstHomeFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (isFirstHomeFocus.current) { isFirstHomeFocus.current = false; return; }
+      loadGames();
+      refreshReviewSummary();
+    }, [loadGames, refreshReviewSummary])
+  );
 
   useEffect(() => {
     if (session) refreshReviewSummary();
@@ -426,6 +436,48 @@ export default function HomeScreen({ session, profile }) {
     })();
   }, [session, games]);
 
+  // 많이 플레이한 게임 — 실패해도 나머지 홈 화면에 영향 없도록 별도 effect로 분리
+  useEffect(() => {
+    if (games.length === 0) { setMostPlayed([]); return; }
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("game_play_counts")
+          .select("game_id, play_count, player_count")
+          .order("play_count", { ascending: false })
+          .order("player_count", { ascending: false })
+          .limit(50);
+        if (error || !data) { setMostPlayed([]); return; }
+
+        const gamesById = {};
+        games.forEach((g) => { gamesById[g.id] = g; });
+
+        const withGames = data
+          .filter((row) => gamesById[row.game_id])
+          .map((row) => ({ game: gamesById[row.game_id], playCount: row.play_count }))
+          .slice(0, 10);
+
+        setMostPlayed(withGames.length >= 3 ? withGames : []);
+      } catch (err) {
+        console.warn("[HomeScreen] 많이 플레이한 게임 로딩 실패:", err);
+        setMostPlayed([]);
+      }
+    })();
+  }, [games]);
+
+  // 리뷰 저장/수정/삭제 후 홈 전체(통계·추천·많이 플레이한 게임 포함) 재조회
+  const refreshHomeData = useCallback(() => {
+    refreshReviewSummary();
+    loadGames();
+  }, [refreshReviewSummary, loadGames]);
+
+  const onPullRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadGames();
+    await refreshReviewSummary();
+    setRefreshing(false);
+  }, [loadGames, refreshReviewSummary]);
+
   const Header = (
     <View style={[s.homeHeader, { paddingTop: insets.top }]}>
       <Text style={s.logoText}>BOGI</Text>
@@ -460,9 +512,37 @@ export default function HomeScreen({ session, profile }) {
                 session={session}
                 reviewSummary={reviewSummary[item.id] || null}
                 gameStat={gameStats[item.id] || null}
-                onReviewSaved={refreshReviewSummary}
+                onReviewSaved={refreshHomeData}
                 cardWidth={RANK_CARD_W}
                 onGameAdd={session ? () => setShowSubmitModal(true) : null}
+              />
+            )}
+          />
+        </View>
+      )}
+
+      {!loading && mostPlayed.length > 0 && (
+        <View style={s.section}>
+          <SectionHeader
+            title="🔥 많이 플레이한 게임"
+            sub="BOGI 유저들이 가장 많이 기록했어요"
+          />
+          <FlatList
+            data={mostPlayed}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item) => item.game.id.toString()}
+            contentContainerStyle={{ gap: 10, paddingRight: 4 }}
+            renderItem={({ item }) => (
+              <GameCard
+                game={item.game}
+                session={session}
+                reviewSummary={reviewSummary[item.game.id] || null}
+                gameStat={gameStats[item.game.id] || null}
+                onReviewSaved={refreshHomeData}
+                cardWidth={RANK_CARD_W}
+                onGameAdd={session ? () => setShowSubmitModal(true) : null}
+                playCount={item.playCount}
               />
             )}
           />
@@ -489,7 +569,7 @@ export default function HomeScreen({ session, profile }) {
                   session={session}
                   reviewSummary={reviewSummary[item.game.id] || null}
                   gameStat={{ avg: item.avg, count: item.count }}
-                  onReviewSaved={refreshReviewSummary}
+                  onReviewSaved={refreshHomeData}
                   badgeColor={index < 3 ? RANK_COLORS[index] : "#9ca3af"}
                   onGameAdd={session ? () => setShowSubmitModal(true) : null}
                 />
@@ -523,7 +603,7 @@ export default function HomeScreen({ session, profile }) {
                 session={session}
                 reviewSummary={reviewSummary[item.game.id] || null}
                 gameStat={gameStats[item.game.id] || null}
-                onReviewSaved={refreshReviewSummary}
+                onReviewSaved={refreshHomeData}
                 cardWidth={RANK_CARD_W}
                 onGameAdd={session ? () => setShowSubmitModal(true) : null}
               />
@@ -548,7 +628,7 @@ export default function HomeScreen({ session, profile }) {
                 session={session}
                 reviewSummary={reviewSummary[item.id] || null}
                 gameStat={gameStats[item.id] || null}
-                onReviewSaved={refreshReviewSummary}
+                onReviewSaved={refreshHomeData}
                 badgeColor={index < 3 ? RANK_COLORS[index] : "#9ca3af"}
                 onGameAdd={session ? () => setShowSubmitModal(true) : null}
               />
@@ -612,6 +692,9 @@ export default function HomeScreen({ session, profile }) {
         }
         contentContainerStyle={{ paddingHorizontal: PADDING, paddingBottom: insets.bottom + 68 }}
         columnWrapperStyle={{ gap: COL_GAP, marginBottom: COL_GAP }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} tintColor={COLORS.accent} colors={[COLORS.accent]} />
+        }
         ListEmptyComponent={
           <View style={s.center}>
             <Text style={{ fontSize: 40, marginBottom: 10 }}>🎲</Text>
@@ -624,7 +707,7 @@ export default function HomeScreen({ session, profile }) {
             session={session}
             reviewSummary={reviewSummary[item.id] || null}
             gameStat={gameStats[item.id] || null}
-            onReviewSaved={refreshReviewSummary}
+            onReviewSaved={refreshHomeData}
             cardWidth={CARD_W}
             onGameAdd={session ? () => setShowSubmitModal(true) : null}
           />
