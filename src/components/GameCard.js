@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { supabase } from "../lib/supabase";
 import { COLORS } from "../constants/colors";
+import { maybeRequestStoreReview } from "../lib/storeReview";
 
 const { width: SW, height: SH } = Dimensions.get("window");
 
@@ -480,6 +481,7 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
       quality_rating:      detailScores.quality      || null,
       convenience_rating:  detailScores.convenience  || null,
     };
+    const isNewReview = !editingId;
     let error;
     if (editingId) {
       ({ error } = await supabase.from("reviews").update(payload).eq("id", editingId).eq("user_id", session.user.id));
@@ -488,7 +490,21 @@ export default function GameCard({ game, session, reviewSummary, gameStat, onRev
     }
     setSaving(false);
     if (error) { Alert.alert("오류", error.message); }
-    else { onReviewSaved?.(); closeCard(); }
+    else {
+      onReviewSaved?.();
+      closeCard();
+      if (isNewReview) {
+        try {
+          const { count } = await supabase
+            .from("reviews")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", session.user.id);
+          if (count != null) maybeRequestStoreReview(count);
+        } catch (err) {
+          console.warn("[GameCard] 리뷰 개수 조회 실패 (별점 요청 skip):", err);
+        }
+      }
+    }
   };
 
   const handleDelete = async (reviewId) => {
